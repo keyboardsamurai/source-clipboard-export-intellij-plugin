@@ -17,6 +17,14 @@
     This plugin automates the inclusion of source code and its file path into your clipboard, streamlining the process
     for analysis and sharing, especially with Large Language Models (LLMs).
 
+    Including the file path with the source code often gives immediate context to the recipient or the processing tool.
+    This is particularly useful when sharing code snippets with team members or integrating with AI and LLMs,
+    as it clarifies where the code comes from within a project's directory structure.
+    It helps in understanding the purpose and scope of the code, especially in large projects with complex directory
+    hierarchies and results in better LLM response accuracy and performance.
+
+    <img src="https://github.com/keyboardsamurai/source-clipboard-export-intellij-plugin/blob/master/media/demo.gif" alt="Export Source to Clipboard" width="640" height="480" />
+
     <ul>
         <li><b>AI-Ready Sharing:</b> Prepare your code for analysis by AI and LLMs with seamless clipboard integration.</li>
         <li><b>Efficient Collaboration:</b> Enhance your workflow by quickly sharing code and its context with team members or AI tools.</li>
