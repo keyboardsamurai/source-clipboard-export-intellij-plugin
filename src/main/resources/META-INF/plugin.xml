@@ -1,0 +1,49 @@
+<!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin>
+    <!-- Unique identifier of the plugin. It should be FQN. It cannot be changed between the plugin versions. -->
+    <id>com.keyboardsamurais.intellij.plugin.source-clipboard-export-intellij-plugin</id>
+
+    <!-- Public plugin name should be written in Title Case.
+         Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-name -->
+    <name>Export Source to Clipboard</name>
+
+    <!-- A displayed Vendor name or Organization ID displayed on the Plugins Page. -->
+    <vendor email="agudo.projects@icloud.com" url="https://www.antonioagudo.com">Antonio Agudo</vendor>
+
+    <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
+         Simple HTML elements (text formatting, paragraphs, and lists) can be added inside of <![CDATA[ ]]> tag.
+         Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-description -->
+    <description><![CDATA[<description>
+    This plugin automates the inclusion of source code and its file path into your clipboard, streamlining the process
+    for analysis and sharing, especially with Large Language Models (LLMs).
+
+    <ul>
+        <li><b>AI-Ready Sharing:</b> Prepare your code for analysis by AI and LLMs with seamless clipboard integration.</li>
+        <li><b>Efficient Collaboration:</b> Enhance your workflow by quickly sharing code and its context with team members or AI tools.</li>
+        <li><b>Automated Convenience:</b> Automatically append file paths to clipboard content, saving time and reducing manual errors.</li>
+        <li><b>Smart Directory Processing:</b> Automatically processes entire directories, converting code files and their paths into a shareable format, while intelligently skipping binary files to focus on relevant source code.</li>
+        <li><b>Limit-Conscious Operation:</b> Designed to manage large data loads efficiently, the plugin caps processing at 50 files to maintain performance and prevent overload.</li>
+    </ul>
+
+    Export Source to Clipboard is designed for developers and teams looking to leverage AI in their coding process,
+    offering a convenient bridge between your code and the latest AI technologies for analysis and improvement.
+    It's an essential tool for anyone aiming to enhance productivity and focus on innovation in the software
+    development lifecycle.
+</description>
+]]></description>
+
+    <!-- Product and plugin compatibility requirements.
+         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
+    <depends>com.intellij.modules.platform</depends>
+
+    <!-- Extension points defined by the plugin.
+         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
+    <extensions defaultExtensionNs="com.intellij">
+
+    </extensions>
+    <actions>
+        <action id="DumpFolderContentsAction" class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.DumpFolderContentsAction" text="Export File Content to Clipboard" description="Dumps all files under a selected folder to the clipboard along with a filepath header">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>
