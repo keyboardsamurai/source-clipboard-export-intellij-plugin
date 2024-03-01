@@ -4,6 +4,8 @@
 
 Export Source to Clipboard is an IntelliJ plugin designed to automate the inclusion of source code and its file path into your clipboard, thereby streamlining the process for analysis, sharing, and collaboration, especially with Large Language Models (LLMs). It enhances the workflow for developers and teams by providing a convenient bridge between your code and the latest AI technologies.
 
+![Export Source to Clipboard IntelliJ Plugin Demo](media/demo.gif)
+
 ## Features
 
 - **AI-Ready Sharing:** Prepare your code for analysis by AI and LLMs with seamless clipboard integration.
