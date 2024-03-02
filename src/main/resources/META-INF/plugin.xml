@@ -23,8 +23,6 @@
     It helps in understanding the purpose and scope of the code, especially in large projects with complex directory
     hierarchies and results in better LLM response accuracy and performance.
 
-    <img src="https://github.com/keyboardsamurai/source-clipboard-export-intellij-plugin/blob/master/media/demo.gif" alt="Export Source to Clipboard" width="640" height="480" />
-
     <ul>
         <li><b>AI-Ready Sharing:</b> Prepare your code for analysis by AI and LLMs with seamless clipboard integration.</li>
         <li><b>Efficient Collaboration:</b> Enhance your workflow by quickly sharing code and its context with team members or AI tools.</li>
