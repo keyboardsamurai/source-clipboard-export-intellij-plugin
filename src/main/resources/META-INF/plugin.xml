@@ -45,7 +45,8 @@
     <!-- Extension points defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
-
+        <projectConfigurable instance="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.SourceClipboardExportConfigurable"
+                                 displayName="Export Source to Clipboard"/>
     </extensions>
     <actions>
         <action id="DumpFolderContentsAction" class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.DumpFolderContentsAction" text="Export File Content to Clipboard" description="Dumps all files under a selected folder to the clipboard along with a filepath header">
