@@ -7,12 +7,14 @@ import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.table.JBTable
 import java.awt.Component
 import java.awt.Dimension
+import java.awt.FlowLayout
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.*
 import javax.swing.table.DefaultTableModel
 import javax.swing.table.TableCellRenderer
 import javax.swing.table.TableColumn
+
 
 class SourceClipboardExportConfigurable : Configurable {
     private var mySettingsPanel: JPanel? = null
@@ -27,10 +29,15 @@ class SourceClipboardExportConfigurable : Configurable {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
         }
 
-        // File count components
+
+        // Create a panel for file count with FlowLayout to put elements in the same row
+        val fileCountPanel = JPanel(FlowLayout(FlowLayout.LEFT))
         myFileCountSpinner = JSpinner(SpinnerNumberModel(50, 1, Int.MAX_VALUE, 1))
-        mySettingsPanel!!.add(JLabel("Maximum number of files to process:"))
-        mySettingsPanel!!.add(myFileCountSpinner)
+
+        // Add the label and spinner to the file count panel
+        fileCountPanel.add(JLabel("Maximum number of files to process:"))
+        fileCountPanel.add(myFileCountSpinner)
+        mySettingsPanel!!.add(fileCountPanel);
 
         // Filter components
         myAddFilterTextField = JTextField().apply {
