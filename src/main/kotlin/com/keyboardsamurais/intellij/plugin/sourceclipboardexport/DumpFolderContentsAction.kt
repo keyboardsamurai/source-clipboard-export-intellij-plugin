@@ -1,5 +1,6 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport
 
+import SourceClipboardExportSettings
 import com.intellij.notification.Notification
 import com.intellij.notification.NotificationType
 import com.intellij.notification.Notifications
@@ -13,6 +14,7 @@ import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
+import java.lang.Math.min
 
 class DumpFolderContentsAction : AnAction() {
     private var fileCount = 0
@@ -77,8 +79,21 @@ class DumpFolderContentsAction : AnAction() {
 
     private fun isBinaryFile(file: VirtualFile): Boolean {
         val bytes = file.contentsToByteArray()
-        return bytes.size > 1024 && bytes.take(1024).any { it == 0x00.toByte() }
+        // A null byte is often an indicator of a binary file
+        val nullByteCount = bytes.count { it == 0x00.toByte() }
+
+        // Check a larger sample size depending on the size of the file
+        val sampleSize = min(bytes.size, 1024)
+        val nonTextBytes = bytes.take(sampleSize).count {
+            (it !in 0x20..0x7E) &&
+                    (it !in listOf(0x09.toByte(), 0x0A.toByte(), 0x0D.toByte()))
+        }
+
+        // Determine if the file is binary using the presence of null bytes or a high percentage of non-text bytes
+        val threshold = 0.30 // Adjusted threshold to 30%
+        return nullByteCount > 0 || (nonTextBytes.toFloat() / sampleSize) > threshold
     }
+
 
     private fun fileContentsToString(file: VirtualFile): String {
         return try {

@@ -3,11 +3,12 @@ package com.keyboardsamurais.intellij.plugin.sourceclipboardexport
 import SourceClipboardExportSettings
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.project.ProjectManager
+import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.table.JBTable
-import java.awt.Component
-import java.awt.Dimension
-import java.awt.FlowLayout
+import com.intellij.util.ui.JBUI
+import java.awt.*
+import java.awt.event.ActionEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.*
@@ -15,106 +16,138 @@ import javax.swing.table.DefaultTableModel
 import javax.swing.table.TableCellRenderer
 import javax.swing.table.TableColumn
 
-
 class SourceClipboardExportConfigurable : Configurable {
-    private var mySettingsPanel: JPanel? = null
-    private var myFileCountSpinner: JSpinner? = null
-    private var myFiltersTableModel: DefaultTableModel? = null
-    private var myFiltersTable: JBTable? = null
-    private var myAddFilterTextField: JTextField? = null
+    private var settingsPanel: JPanel? = null
+    private var fileCountSpinner: JSpinner? = null
+    private var filtersTableModel: DefaultTableModel? = null
+    private var filtersTable: JBTable? = null
+    private var addFilterTextField: JTextField? = null
 
     private val project = ProjectManager.getInstance().defaultProject
+
     override fun createComponent(): JComponent? {
-        mySettingsPanel = JPanel().apply {
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
-        }
+        settingsPanel = JPanel(GridBagLayout())
+        val gbc = createGridBagConstraints()
 
+        addFileCountPanel(gbc)
+        addFiltersPanel(gbc)
+        addFiltersTable(gbc)
 
-        // Create a panel for file count with FlowLayout to put elements in the same row
+        reset()
+        return settingsPanel
+    }
+
+    private fun createGridBagConstraints() = GridBagConstraints().apply {
+        gridx = 0
+        gridy = 0
+        gridwidth = 2
+        fill = GridBagConstraints.HORIZONTAL
+        weightx = 1.0
+        insets = JBUI.insets(5)
+    }
+
+    private fun addFileCountPanel(gbc: GridBagConstraints) {
         val fileCountPanel = JPanel(FlowLayout(FlowLayout.LEFT))
-        myFileCountSpinner = JSpinner(SpinnerNumberModel(50, 1, Int.MAX_VALUE, 1))
-
-        // Add the label and spinner to the file count panel
+        fileCountSpinner = JSpinner(SpinnerNumberModel(50, 1, Int.MAX_VALUE, 1))
         fileCountPanel.add(JLabel("Maximum number of files to process:"))
-        fileCountPanel.add(myFileCountSpinner)
-        mySettingsPanel!!.add(fileCountPanel);
+        fileCountPanel.add(fileCountSpinner)
+        settingsPanel!!.add(fileCountPanel, gbc)
+        gbc.gridy++
+    }
 
-        // Filter components
-        myAddFilterTextField = JTextField().apply {
+    private fun addFiltersPanel(gbc: GridBagConstraints) {
+        addFilterTextField = PlaceholderTextField(".fileExtension").apply {
             maximumSize = Dimension(Integer.MAX_VALUE, preferredSize.height)
+            preferredSize = Dimension(200, preferredSize.height)
         }
-        val addButton = JButton("Add Filter").apply {
+        val addButton = JButton("Include in File Extension Filter").apply {
             addActionListener { addFilter() }
         }
-        val filtersPanel = JPanel().apply {
-            layout = BoxLayout(this, BoxLayout.X_AXIS)
-            add(myAddFilterTextField)
-            add(addButton)
-        }
-        mySettingsPanel!!.add(filtersPanel)
+        val filtersPanel = JPanel(FlowLayout(FlowLayout.LEFT))
+        filtersPanel.add(addFilterTextField)
+        filtersPanel.add(addButton)
+        settingsPanel!!.add(filtersPanel, gbc)
+        gbc.gridy++
+    }
 
-        // Table for filters
-        myFiltersTableModel = DefaultTableModel(arrayOf("Filter"), 0)
-        myFiltersTable = JBTable(myFiltersTableModel).apply {
-            preferredScrollableViewportSize = Dimension(450, 70)
-            addMouseListener(object : MouseAdapter() {
-                override fun mouseClicked(e: MouseEvent) {
-                    val column = columnAtPoint(e.point)
-                    if (column == 1) { // Assuming the "Remove" button is in the second column
-                        val row = rowAtPoint(e.point)
-                        myFiltersTableModel?.takeIf { it.rowCount > row }?.removeRow(row)
-                    }
-                }
+    private fun addFiltersTable(gbc: GridBagConstraints) {
+        gbc.gridwidth = 1
+        gbc.fill = GridBagConstraints.BOTH
+        gbc.weighty = 1.0
+        filtersTableModel = DefaultTableModel(arrayOf("Filter", "Action"), 0)
+        filtersTable = createFiltersTable()
+        val scrollPane = JBScrollPane(filtersTable)
+        settingsPanel!!.add(scrollPane, gbc)
+    }
+
+    private fun createFiltersTable() = JBTable(filtersTableModel).apply {
+        preferredScrollableViewportSize = Dimension(450, 70)
+        addRemoveActionColumnIfNotExists()
+        columnModel.getColumn(1).cellRenderer = ButtonRenderer()
+        columnModel.getColumn(1).cellEditor = ButtonEditor(JButton())
+        addMouseListenerForRemoveAction()
+    }
+
+    private fun JBTable.addRemoveActionColumnIfNotExists() {
+        if (columnModel.columnCount < 2) {
+            columnModel.addColumn(TableColumn().apply {
+                headerValue = "Action"
             })
-
-            // Create a separate remove button column
-            columnModel.addColumn(object : TableColumn() {
-                init {
-                    headerValue = "Action"
-                    cellRenderer = RemoveButtonRenderer()
-                }
-            })
         }
+    }
 
-        mySettingsPanel!!.add(JBScrollPane(myFiltersTable))
-
-        reset() // Load initial state
-
-        return mySettingsPanel
+    private fun JBTable.addMouseListenerForRemoveAction() {
+        addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                val column = columnAtPoint(e.point)
+                if (column == 1) {
+                    val row = rowAtPoint(e.point)
+                    filtersTableModel?.takeIf { it.rowCount > row }?.removeRow(row)
+                }
+            }
+        })
     }
 
     private fun addFilter() {
-        val filterText = myAddFilterTextField!!.text.trim()
-        if (filterText.isNotEmpty()) {
-            myFiltersTableModel!!.addRow(arrayOf(filterText))
-            myAddFilterTextField!!.text = ""
+        val filterText = addFilterTextField!!.text.trim()
+        if (filterText.isNotEmpty() && !filterExists(filterText)) {
+            filtersTableModel!!.addRow(arrayOf(filterText, "Remove"))
+            addFilterTextField!!.text = ""
         }
+    }
+
+    private fun filterExists(filterText: String): Boolean {
+        for (i in 0 until filtersTableModel!!.rowCount) {
+            if (filtersTableModel!!.getValueAt(i, 0) == filterText) {
+                return true
+            }
+        }
+        return false
     }
 
     override fun isModified(): Boolean {
         val settings = SourceClipboardExportSettings.getInstance(project)
-        val filters = (0 until myFiltersTableModel!!.rowCount).map {
-            val value = myFiltersTableModel!!.getValueAt(it, 0)
+        val filters = (0 until filtersTableModel!!.rowCount).map {
+            val value = filtersTableModel!!.getValueAt(it, 0)
             if (value is String) value else ""
         }
-        return myFileCountSpinner!!.value != settings.state.fileCount || settings.state.filenameFilters != filters
+        return fileCountSpinner!!.value != settings.state.fileCount || settings.state.filenameFilters != filters
     }
 
     override fun apply() {
         val settings = SourceClipboardExportSettings.getInstance(project)
-        settings.state.fileCount = myFileCountSpinner!!.value as Int
+        settings.state.fileCount = fileCountSpinner!!.value as Int
         settings.state.filenameFilters =
-            (0 until myFiltersTableModel!!.rowCount).map { myFiltersTableModel!!.getValueAt(it, 0) as String }
+            (0 until filtersTableModel!!.rowCount).map { filtersTableModel!!.getValueAt(it, 0) as String }
                 .toMutableList()
     }
 
     override fun reset() {
         val settings = SourceClipboardExportSettings.getInstance(project)
-        myFileCountSpinner!!.value = settings.state.fileCount
-
-        myFiltersTableModel!!.rowCount = 0
+        fileCountSpinner!!.value = settings.state.fileCount
+        filtersTableModel!!.rowCount = 0
         settings.state.filenameFilters.forEach { filter ->
-            myFiltersTableModel!!.addRow(arrayOf(filter))
+            filtersTableModel!!.addRow(arrayOf(filter))
         }
     }
 
@@ -122,17 +155,51 @@ class SourceClipboardExportConfigurable : Configurable {
         return "Source Clipboard Export"
     }
 
-    inner class RemoveButtonRenderer : JButton(), TableCellRenderer {
+    inner class ButtonRenderer : JButton(), TableCellRenderer {
+        init {
+            isOpaque = true
+        }
+
         override fun getTableCellRendererComponent(
-            table: JTable,
-            value: Any,
-            isSelected: Boolean,
-            hasFocus: Boolean,
-            row: Int,
-            column: Int
+            table: JTable, value: Any,
+            isSelected: Boolean, hasFocus: Boolean,
+            row: Int, column: Int
         ): Component {
-            text = "Remove"
+            text = (if (value is Boolean) value.toString() else "Remove")
             return this
+        }
+    }
+
+    inner class ButtonEditor(private val btn: JButton) : DefaultCellEditor(JCheckBox()) {
+        init {
+            btn.action = object : AbstractAction() {
+                override fun actionPerformed(e: ActionEvent) {
+                    fireEditingStopped()
+                }
+            }
+        }
+
+        override fun getTableCellEditorComponent(
+            table: JTable, value: Any,
+            isSelected: Boolean, row: Int, column: Int
+        ): Component {
+            btn.text = (if (value is Boolean) value.toString() else "Remove")
+            return btn
+        }
+
+        override fun getCellEditorValue(): Any {
+            return btn.text
+        }
+    }
+}
+
+
+class PlaceholderTextField(private val placeholder: String) : JTextField() {
+    override fun paintComponent(g: Graphics) {
+        super.paintComponent(g)
+        if (text.isEmpty()) {
+            g.color = JBColor.GRAY
+            g.drawString(placeholder, 5, height / 2 + font.size / 2 - 2)
         }
     }
 }
