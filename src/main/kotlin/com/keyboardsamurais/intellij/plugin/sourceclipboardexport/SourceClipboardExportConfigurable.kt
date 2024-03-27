@@ -1,6 +1,7 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport
 
 import SourceClipboardExportSettings
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.ui.JBColor
@@ -126,7 +127,7 @@ class SourceClipboardExportConfigurable : Configurable {
     }
 
     override fun isModified(): Boolean {
-        val settings = SourceClipboardExportSettings.getInstance(project)
+        val settings = SourceClipboardExportSettings.getInstance()
         val filters = (0 until filtersTableModel!!.rowCount).map {
             val value = filtersTableModel!!.getValueAt(it, 0)
             if (value is String) value else ""
@@ -135,20 +136,24 @@ class SourceClipboardExportConfigurable : Configurable {
     }
 
     override fun apply() {
-        val settings = SourceClipboardExportSettings.getInstance(project)
+        val settings = SourceClipboardExportSettings.getInstance()
         settings.state.fileCount = fileCountSpinner!!.value as Int
         settings.state.filenameFilters =
             (0 until filtersTableModel!!.rowCount).map { filtersTableModel!!.getValueAt(it, 0) as String }
                 .toMutableList()
+        LOGGER.debug("Applying settings: File count = ${settings.state.fileCount}, Filters = ${settings.state.filenameFilters.joinToString(", ")}")
     }
 
+
     override fun reset() {
-        val settings = SourceClipboardExportSettings.getInstance(project)
+        val settings = SourceClipboardExportSettings.getInstance()
         fileCountSpinner!!.value = settings.state.fileCount
         filtersTableModel!!.rowCount = 0
         settings.state.filenameFilters.forEach { filter ->
             filtersTableModel!!.addRow(arrayOf(filter))
         }
+        LOGGER.debug("Resetting settings UI: Current filters = ${settings.state.filenameFilters.joinToString(", ")}")
+
     }
 
     override fun getDisplayName(): String {
@@ -161,14 +166,16 @@ class SourceClipboardExportConfigurable : Configurable {
         }
 
         override fun getTableCellRendererComponent(
-            table: JTable, value: Any,
+            table: JTable, value: Any?,
             isSelected: Boolean, hasFocus: Boolean,
             row: Int, column: Int
         ): Component {
-            text = (if (value is Boolean) value.toString() else "Remove")
+            // Check for null value and handle it appropriately
+            text = value?.toString() ?: "Remove"
             return this
         }
     }
+
 
     inner class ButtonEditor(private val btn: JButton) : DefaultCellEditor(JCheckBox()) {
         init {
@@ -190,6 +197,9 @@ class SourceClipboardExportConfigurable : Configurable {
         override fun getCellEditorValue(): Any {
             return btn.text
         }
+    }
+    companion object {
+        private val LOGGER = Logger.getInstance(SourceClipboardExportConfigurable::class.java)
     }
 }
 

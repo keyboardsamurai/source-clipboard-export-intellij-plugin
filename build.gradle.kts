@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.keyboardsamurais.intellij.plugin"
-version = "1.2"
+version = "1.3"
 
 repositories {
     mavenCentral()
