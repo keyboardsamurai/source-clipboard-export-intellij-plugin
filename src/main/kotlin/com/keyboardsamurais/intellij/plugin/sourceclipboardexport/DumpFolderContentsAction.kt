@@ -15,51 +15,106 @@ import com.intellij.openapi.vfs.VirtualFile
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.lang.Math.min
+import java.util.*
+import javax.swing.Timer
+import kotlin.collections.ArrayList
 
 class DumpFolderContentsAction : AnAction() {
     private var fileCount = 0
+    private var excludedFileCount = 0
+    private var processedFileCount = 0
+    private val excludedExtensions = mutableSetOf<String>()
+
 
     override fun actionPerformed(e: AnActionEvent) {
-        val settings = SourceClipboardExportSettings.getInstance(e.project!!)
-        fileCount = 0
-
-        val project = e.project
-        val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)
+        LOGGER.info("Action initiated: DumpFolderContentsAction");
+        val project = e.project;
+        val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY);
         if (project == null || selectedFiles.isNullOrEmpty()) {
-            return
+            LOGGER.warn("Action aborted: No project found or no files selected.");
+            return;
         }
 
-        val fileContents: MutableList<String> = ArrayList()
+
+        val settings = SourceClipboardExportSettings.getInstance();
+        fileCount = 0;
+
+        LOGGER.info("Selected files/directories count: " + selectedFiles.size);
+        val fileContents: MutableList<String> = ArrayList();
         for (file in selectedFiles) {
-            processFile(file, fileContents, project)
+            LOGGER.info("Processing file/directory: " + file.getPath());
+            processFile(file, fileContents, project);
             if (fileCount >= settings.state.fileCount) {
-                notifyFileLimitReached(settings.state.fileCount)
-                break
+                notifyFileLimitReached(settings.state.fileCount);
+                break;
             }
         }
 
-        val sb = StringBuilder()
-        sb.append(java.lang.String.join("\n", fileContents))
-        copyToClipboard(sb.toString())
-    }
+        if (fileContents.isEmpty()) {
+            LOGGER.warn("No file contents were collected for clipboard operation.");
+        } else {
+            val sb = StringBuilder();
+            sb.append(java.lang.String.join("\n", fileContents));
+            try {
+                val text = sb.toString()
+                copyToClipboard(text);
+                LOGGER.info("Successfully copied contents to clipboard. Content size: " + text.length);
+            } catch (ex: Exception) {
+                LOGGER.error("Failed to copy contents to clipboard.", ex);
+            }
+        }
+        LOGGER.info("Action completed: DumpFolderContentsAction");
+        showNotification(settings.state.filenameFilters, excludedFileCount, processedFileCount)
 
+    }
     private fun processFile(file: VirtualFile, fileContents: MutableList<String>, project: Project) {
-        val settings = SourceClipboardExportSettings.getInstance(project)
+        LOGGER.info("Starting to process file: ${file.path}")
+        val settings = SourceClipboardExportSettings.getInstance()
         val filters = settings.state.filenameFilters
         val repositoryRoot = getRepositoryRoot(project)
 
+
         if (file.isDirectory) {
+            LOGGER.info("File is a directory, processing directory: ${file.path}")
             processDirectory(file, fileContents, project)
         } else {
             val relativePath = repositoryRoot?.let { VfsUtil.getRelativePath(file, it) } ?: file.name
-            if (!isBinaryFile(file) && file.length <= 100 * 1024) {
-                if (filters.isEmpty() || filters.any { file.name.endsWith(it) }) {
+            LOGGER.info("Processing individual file: $relativePath")
+            if (isBinaryFile(file)) {
+                LOGGER.info("Skipping binary file: $relativePath")
+                return
+            }
+            if (file.length > 100 * 1024) {
+                LOGGER.info("Skipping file due to size limit (>100KB): $relativePath")
+                return
+            }
+            if (filters.isNotEmpty() && filters.none { file.name.endsWith(it) }) {
+                LOGGER.info("Skipping file due to filename filter: $relativePath")
+                val fileExtension = file.extension ?: "unknown"
+                excludedExtensions.add(fileExtension)
+
+                excludedFileCount++
+                return
+            } else {
+                // This else branch ensures only non-excluded files are counted as processed
+                processedFileCount++
+            }
+
+            try {
+                val fileContent = fileContentsToString(file)
+                if (fileContent.isEmpty()) {
+                    LOGGER.warn("File content is empty, skipping file: $relativePath")
+                } else {
                     fileContents.add("// filename: $relativePath")
-                    fileContents.add(fileContentsToString(file))
+                    fileContents.add(fileContent)
                     fileCount++
+                    LOGGER.info("Added file content to clipboard contents: $relativePath")
                 }
+            } catch (e: Exception) {
+                LOGGER.error("Error processing file: $relativePath", e)
             }
         }
+        LOGGER.info("Finished processing file: ${file.path}")
     }
 
     private fun processDirectory(directory: VirtualFile, fileContents: MutableList<String>, project: Project) {
@@ -105,6 +160,7 @@ class DumpFolderContentsAction : AnAction() {
     }
 
     private fun copyToClipboard(text: String) {
+        LOGGER.info("Copying to clipboard. Content length: ${text.length}")
         Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
     }
 
@@ -119,8 +175,34 @@ class DumpFolderContentsAction : AnAction() {
         )
         LOGGER.info("Reached the limit of $fileCount files, stopping further processing.")
     }
+    private fun showNotification(filters: List<String>, excludedFiles: Int, processedFiles: Int) {
+        val filterSummary =
+            if (filters.isEmpty()) "" else "Excluded filters: ${filters.joinToString(", ")} \nNumber of excluded files: $excludedFiles"
+        val exportedFilesSummary =
+            """
+        Number of exported files: $processedFiles
+    """.trimIndent()
+
+        val notificationContent = if (filterSummary.isEmpty()) exportedFilesSummary else "$filterSummary\n$exportedFilesSummary"
+
+        val notification = Notification(
+            "Execution",
+            "Export Operation Summary",
+            notificationContent,
+            NotificationType.INFORMATION
+        )
+        notification.expireAfter(5000)
+        Notifications.Bus.notify(notification)
+    }
 
     companion object {
         private val LOGGER = Logger.getInstance(DumpFolderContentsAction::class.java)
+    }
+}
+
+fun Notification.expireAfter(millis: Int) {
+    Timer(millis) { expire() }.apply {
+        isRepeats = false
+        start()
     }
 }

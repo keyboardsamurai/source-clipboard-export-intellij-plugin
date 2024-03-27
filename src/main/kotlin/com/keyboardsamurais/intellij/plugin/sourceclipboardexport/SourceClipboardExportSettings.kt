@@ -1,10 +1,10 @@
-import com.intellij.openapi.components.Service
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.PersistentStateComponent
+import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
-import com.intellij.openapi.project.Project
 
-@Service(Service.Level.PROJECT)
+@Service(Service.Level.APP)
 @State(
     name = "SourceClipboardExportSettings",
     storages = [Storage("SourceClipboardExportSettings.xml")]
@@ -24,8 +24,9 @@ class SourceClipboardExportSettings : PersistentStateComponent<SourceClipboardEx
     }
 
     companion object {
-        fun getInstance(project: Project): SourceClipboardExportSettings {
-            return project.getService(SourceClipboardExportSettings::class.java)
+        fun getInstance(): SourceClipboardExportSettings {
+            return ApplicationManager.getApplication().getService(SourceClipboardExportSettings::class.java)
         }
     }
+
 }
