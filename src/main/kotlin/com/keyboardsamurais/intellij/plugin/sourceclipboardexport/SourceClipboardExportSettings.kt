@@ -12,7 +12,8 @@ import com.intellij.openapi.components.Storage
 class SourceClipboardExportSettings : PersistentStateComponent<SourceClipboardExportSettings.State> {
     class State {
         var fileCount: Int = 50
-        var filenameFilters: MutableList<String> = mutableListOf() // List of filters
+        var filenameFilters: MutableList<String> = mutableListOf()
+        var areFiltersEnabled: Boolean = true
     }
 
     private var myState = State()
@@ -28,5 +29,4 @@ class SourceClipboardExportSettings : PersistentStateComponent<SourceClipboardEx
             return ApplicationManager.getApplication().getService(SourceClipboardExportSettings::class.java)
         }
     }
-
 }
