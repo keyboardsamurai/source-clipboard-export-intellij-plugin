@@ -49,22 +49,26 @@ class SourceClipboardExportConfigurable : Configurable {
 
     private fun addFileCountPanel(gbc: GridBagConstraints) {
         val fileCountPanel = JPanel(FlowLayout(FlowLayout.LEFT))
+        val fileCountLabel = JLabel("Maximum number of files to process:").apply {
+            toolTipText = "Sets the upper limit for the number of files that will be processed and copied to the clipboard."
+        }
         fileCountSpinner = JSpinner(SpinnerNumberModel(50, 1, Int.MAX_VALUE, 1))
-        fileCountPanel.add(JLabel("Maximum number of files to process:"))
+        fileCountPanel.add(fileCountLabel)
         fileCountPanel.add(fileCountSpinner)
         settingsPanel!!.add(fileCountPanel, gbc)
         gbc.gridy++
     }
 
     private fun addFiltersPanel(gbc: GridBagConstraints) {
-        addFilterTextField = PlaceholderTextField(".fileExtension").apply {
-            maximumSize = Dimension(Integer.MAX_VALUE, preferredSize.height)
-            preferredSize = Dimension(200, preferredSize.height)
+        val filterLabel = JLabel("File extension filters:").apply {
+            toolTipText = "Add file extensions to include in the processing. Only files with these extensions will be copied."
         }
-        val addButton = JButton("Include in File Extension Filter").apply {
-            addActionListener { addFilter() }
-        }
+        addFilterTextField = createStyledTextField(".fileExtension")
+        val addButton = createStyledButton("Include in File Extension Filter")
+        addButton.addActionListener { addFilter() }
+
         val filtersPanel = JPanel(FlowLayout(FlowLayout.LEFT))
+        filtersPanel.add(filterLabel)
         filtersPanel.add(addFilterTextField)
         filtersPanel.add(addButton)
         settingsPanel!!.add(filtersPanel, gbc)
@@ -85,7 +89,7 @@ class SourceClipboardExportConfigurable : Configurable {
         preferredScrollableViewportSize = Dimension(450, 70)
         addRemoveActionColumnIfNotExists()
         columnModel.getColumn(1).cellRenderer = ButtonRenderer()
-        columnModel.getColumn(1).cellEditor = ButtonEditor(JButton())
+        columnModel.getColumn(1).cellEditor = ButtonEditor(createStyledButton("Remove"))
         addMouseListenerForRemoveAction()
     }
 
@@ -111,10 +115,21 @@ class SourceClipboardExportConfigurable : Configurable {
 
     private fun addFilter() {
         val filterText = addFilterTextField!!.text.trim()
-        if (filterText.isNotEmpty() && !filterExists(filterText)) {
+        if (isValidFilter(filterText) && !filterExists(filterText)) {
             filtersTableModel!!.addRow(arrayOf(filterText, "Remove"))
             addFilterTextField!!.text = ""
+        } else {
+            JOptionPane.showMessageDialog(
+                settingsPanel,
+                "Invalid or duplicate filter. Filters should start with a dot followed by alphanumeric characters.",
+                "Invalid Input",
+                JOptionPane.ERROR_MESSAGE
+            )
         }
+    }
+
+    private fun isValidFilter(filter: String): Boolean {
+        return filter.matches(Regex("^\\.[a-zA-Z0-9]+$"))
     }
 
     private fun filterExists(filterText: String): Boolean {
@@ -129,13 +144,13 @@ class SourceClipboardExportConfigurable : Configurable {
     override fun isModified(): Boolean {
         val settings = SourceClipboardExportSettings.getInstance()
         val filters = (0 until filtersTableModel!!.rowCount).map {
-            val value = filtersTableModel!!.getValueAt(it, 0)
-            if (value is String) value else ""
+            filtersTableModel!!.getValueAt(it, 0) as String
         }
         return fileCountSpinner!!.value != settings.state.fileCount || settings.state.filenameFilters != filters
     }
 
     override fun apply() {
+        if (!validateInput()) return
         val settings = SourceClipboardExportSettings.getInstance()
         settings.state.fileCount = fileCountSpinner!!.value as Int
         settings.state.filenameFilters =
@@ -144,20 +159,51 @@ class SourceClipboardExportConfigurable : Configurable {
         LOGGER.debug("Applying settings: File count = ${settings.state.fileCount}, Filters = ${settings.state.filenameFilters.joinToString(", ")}")
     }
 
-
     override fun reset() {
         val settings = SourceClipboardExportSettings.getInstance()
         fileCountSpinner!!.value = settings.state.fileCount
         filtersTableModel!!.rowCount = 0
         settings.state.filenameFilters.forEach { filter ->
-            filtersTableModel!!.addRow(arrayOf(filter))
+            filtersTableModel!!.addRow(arrayOf(filter, "Remove"))
         }
         LOGGER.debug("Resetting settings UI: Current filters = ${settings.state.filenameFilters.joinToString(", ")}")
-
     }
 
     override fun getDisplayName(): String {
         return "Source Clipboard Export"
+    }
+
+    private fun validateInput(): Boolean {
+        val fileCount = fileCountSpinner?.value as? Int ?: return false
+        if (fileCount <= 0) {
+            JOptionPane.showMessageDialog(settingsPanel, "File count must be a positive integer.", "Invalid Input", JOptionPane.ERROR_MESSAGE)
+            return false
+        }
+
+        val invalidFilters = (0 until filtersTableModel!!.rowCount)
+            .map { filtersTableModel!!.getValueAt(it, 0) as String }
+            .filter { !isValidFilter(it) }
+
+        if (invalidFilters.isNotEmpty()) {
+            JOptionPane.showMessageDialog(settingsPanel, "Invalid filters: ${invalidFilters.joinToString(", ")}\nFilters should start with a dot followed by alphanumeric characters.", "Invalid Input", JOptionPane.ERROR_MESSAGE)
+            return false
+        }
+
+        return true
+    }
+
+    private fun createStyledTextField(placeholder: String): JTextField {
+        return PlaceholderTextField(placeholder).apply {
+            maximumSize = Dimension(Integer.MAX_VALUE, preferredSize.height)
+            preferredSize = Dimension(200, preferredSize.height)
+        }
+    }
+
+    private fun createStyledButton(text: String): JButton {
+        return JButton(text).apply {
+            background = JBColor.background()
+            foreground = JBColor.foreground()
+        }
     }
 
     inner class ButtonRenderer : JButton(), TableCellRenderer {
@@ -170,12 +216,10 @@ class SourceClipboardExportConfigurable : Configurable {
             isSelected: Boolean, hasFocus: Boolean,
             row: Int, column: Int
         ): Component {
-            // Check for null value and handle it appropriately
             text = value?.toString() ?: "Remove"
             return this
         }
     }
-
 
     inner class ButtonEditor(private val btn: JButton) : DefaultCellEditor(JCheckBox()) {
         init {
@@ -198,11 +242,11 @@ class SourceClipboardExportConfigurable : Configurable {
             return btn.text
         }
     }
+
     companion object {
         private val LOGGER = Logger.getInstance(SourceClipboardExportConfigurable::class.java)
     }
 }
-
 
 class PlaceholderTextField(private val placeholder: String) : JTextField() {
     override fun paintComponent(g: Graphics) {

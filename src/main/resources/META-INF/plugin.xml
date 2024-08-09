@@ -46,11 +46,24 @@
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
         <projectConfigurable instance="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.SourceClipboardExportConfigurable"
-                                 displayName="Export Source to Clipboard"/>
+                             displayName="Export Source to Clipboard"/>
+        <notificationGroup id="SourceClipboardExport" displayType="BALLOON" />
+
     </extensions>
+
     <actions>
-        <action id="DumpFolderContentsAction" class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.DumpFolderContentsAction" text="Export File Content to Clipboard" description="Dumps all files under a selected folder to the clipboard along with a filepath header">
+        <action id="SourceClipboardExport.DumpFolderContents"
+                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.DumpFolderContentsAction"
+                text="Export Source to Clipboard"
+                description="Export source code and file paths to clipboard">
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
         </action>
+        <action id="SourceClipboardExport.ToggleFilters"
+                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.ToggleFiltersAction"
+                text="Toggle Filters"
+                description="Toggle file extension filters on/off">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="SourceClipboardExport.DumpFolderContents"/>
+        </action>
     </actions>
+
 </idea-plugin>
