@@ -8,12 +8,17 @@ import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 
 class ToggleFiltersAction : AnAction(), DumbAware {
+
+    // NEW: Use constant for consistency (or define it shared)
+    private val NOTIFICATION_GROUP_ID = "SourceClipboardExport" // Match plugin.xml and DumpFolderContentsAction
+
     override fun actionPerformed(e: AnActionEvent) {
         val settings = SourceClipboardExportSettings.getInstance()
         settings.state.areFiltersEnabled = !settings.state.areFiltersEnabled
 
         val status = if (settings.state.areFiltersEnabled) "enabled" else "disabled"
-        e.presentation.text = "Filters: $status"
+        val actionText = "Filters: $status"
+        e.presentation.text = actionText // Update action text immediately
 
         // Notify the user about the change
         showNotification(
@@ -26,14 +31,17 @@ class ToggleFiltersAction : AnAction(), DumbAware {
 
     override fun update(e: AnActionEvent) {
         super.update(e)
+        // Update action text based on current settings state
         val settings = SourceClipboardExportSettings.getInstance()
         val status = if (settings.state.areFiltersEnabled) "enabled" else "disabled"
         e.presentation.text = "Filters: $status"
+        // Optionally, disable the action if no filters are defined?
+        // e.presentation.isEnabled = settings.state.filenameFilters.isNotEmpty()
     }
 
     private fun showNotification(project: Project?, title: String, content: String, type: NotificationType) {
         NotificationGroupManager.getInstance()
-            .getNotificationGroup("SourceClipboardExport")
+            .getNotificationGroup(NOTIFICATION_GROUP_ID) // Use constant
             .createNotification(title, content, type)
             .notify(project)
     }
