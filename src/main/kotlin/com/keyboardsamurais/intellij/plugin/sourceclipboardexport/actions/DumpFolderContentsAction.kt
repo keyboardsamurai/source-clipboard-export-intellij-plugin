@@ -112,7 +112,8 @@ class DumpFolderContentsAction : AnAction() {
         summaryLines.add("<b>Processed files: ${result.processedFileCount}</b>")
 
         val totalExcluded = result.excludedByFilterCount + result.excludedBySizeCount +
-                            result.excludedByBinaryContentCount + result.excludedByIgnoredNameCount
+                            result.excludedByBinaryContentCount + result.excludedByIgnoredNameCount +
+                            result.excludedByGitignoreCount
         if (totalExcluded > 0) {
             summaryLines.add("Excluded files: $totalExcluded")
             if (result.excludedByFilterCount > 0) {
@@ -126,6 +127,7 @@ class DumpFolderContentsAction : AnAction() {
             if (result.excludedBySizeCount > 0) summaryLines.add("&nbsp;&nbsp;- By size (> ${settings.maxFileSizeKb} KB): ${result.excludedBySizeCount}")
             if (result.excludedByBinaryContentCount > 0) summaryLines.add("&nbsp;&nbsp;- Binary content: ${result.excludedByBinaryContentCount}")
             if (result.excludedByIgnoredNameCount > 0) summaryLines.add("&nbsp;&nbsp;- Ignored name: ${result.excludedByIgnoredNameCount}")
+            if (result.excludedByGitignoreCount > 0) summaryLines.add("&nbsp;&nbsp;- By .gitignore: ${result.excludedByGitignoreCount}")
         }
 
         if (settings.areFiltersEnabled && settings.filenameFilters.isNotEmpty()) {
