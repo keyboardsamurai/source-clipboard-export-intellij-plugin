@@ -15,9 +15,9 @@ repositories {
 // Read more: https://plugins.jetbrains.com/docs/intellij/tools-gradle-intellij-plugin.html
 intellij {
     version.set("2023.2.6")
-    type.set("IC") // Target IDE Platform
-
-    plugins.set(listOf(/* Plugin Dependencies */))
+    type.set("IC")
+    plugins.set(listOf("java"))
+    updateSinceUntilBuild.set(false)
 }
 tasks {
     // Set the JVM compatibility versions
@@ -30,7 +30,7 @@ tasks {
     }
     patchPluginXml {
         sinceBuild.set("232")
-        untilBuild.set("242.*")
+        untilBuild.set("252")
     }
 
     signPlugin {
