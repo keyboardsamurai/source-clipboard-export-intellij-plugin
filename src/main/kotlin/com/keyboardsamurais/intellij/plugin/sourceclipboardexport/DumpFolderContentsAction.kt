@@ -35,13 +35,88 @@ class DumpFolderContentsAction : AnAction() {
     private var processedFileCount = 0
     private val excludedExtensions = Collections.synchronizedSet(mutableSetOf<String>())
 
+    /**
+     * Splits a string by camelCase boundaries.
+     * E.g., "myVariableName" -> ["my", "Variable", "Name"]
+     * E.g., "URLHandler" -> ["URL", "Handler"]
+     * E.g., "Simple" -> ["Simple"]
+     */
+    private fun splitCamelCase(input: String): List<String> {
+        if (input.isEmpty()) return emptyList()
+
+        // Regex Explanation:
+        // (?<=\\p{Ll})(?=\\p{Lu}) : Positive lookbehind for a lowercase letter, positive lookahead for an uppercase letter. (e.g., splits between "my" and "Variable")
+        // |
+        // (?<=\\p{L})(?=\\p{Lu}\\p{Ll}) : Positive lookbehind for any letter, positive lookahead for an uppercase followed by a lowercase. (e.g., splits between "URL" and "Handler")
+        // |
+        // (?<=\\p{N})(?=\\p{L})   : Positive lookbehind for a number, positive lookahead for a letter. (e.g., splits "var123" and "Name" in "var123Name")
+        // |
+        // (?<=\\p{L})(?=\\p{N})   : Positive lookbehind for a letter, positive lookahead for a number. (e.g., splits "var" and "123" in "var123")
+
+        val camelCaseSplitRegex = Regex("(?<=\\p{Ll})(?=\\p{Lu})|(?<=\\p{L})(?=\\p{Lu}\\p{Ll})|(?<=\\p{N})(?=\\p{L})|(?<=\\p{L})(?=\\p{N})") // Correctly escaped
+        return camelCaseSplitRegex.split(input).filter { it.isNotEmpty() }
+    }
+
+    /**
+     * Estimates token count using a regex heuristic combined with simulated subword splitting
+     * for potential identifiers (camelCase, snake_case).
+     *
+     * 1. Splits text into potential tokens (words/identifiers vs symbols/punctuation).
+     * 2. For identifier-like segments, further splits them by underscores and camelCase.
+     * 3. Counts the total number of resulting segments.
+     *
+     * NOTE: This is STILL an APPROXIMATION and will differ from specific model tokenizers,
+     * but it should correlate much better with code token counts than previous methods.
+     *
+     * @param text The text to estimate tokens for.
+     * @return An approximate token count based on segmentation and subword heuristics.
+     */
+    private fun estimateTokensWithSubwordHeuristic(text: String): Int {
+        if (text.isEmpty()) return 0
+
+        // Base regex to separate identifier-like parts from symbols/punctuation and whitespace
+        val baseSplitRegex = Regex("([\\p{L}\\p{N}_]+)|([^\\p{L}\\p{N}_\\s]+)|(\\s+)") // Correctly escaped
+        // Group 1: Letters, Numbers, Underscore (Potential Identifiers/Keywords/Numbers)
+        // Group 2: Non-Letters, Non-Numbers, Non-Underscore, Non-Whitespace (Symbols/Punctuation sequences)
+        // Group 3: Whitespace sequences (we will generally ignore these for token count, but capture them)
+
+        var tokenCount = 0
+        val matches = baseSplitRegex.findAll(text)
+
+        for (match in matches) {
+            when {
+                // Group 1: Potential Identifier/Keyword/Number
+                match.groups[1] != null -> {
+                    val identifierPart = match.value
+                    // First, split by underscore for snake_case
+                    val snakeParts = identifierPart.split('_').filter { it.isNotEmpty() }
+                    var subTokenCount = 0
+                    // Then, split each part by camelCase
+                    for (part in snakeParts) {
+                        subTokenCount += splitCamelCase(part).size
+                    }
+                    // If splitting resulted in 0 (e.g., input was just "_"), count the original match as 1
+                    tokenCount += if (subTokenCount > 0) subTokenCount else 1
+                }
+                // Group 2: Symbol/Punctuation Sequence
+                match.groups[2] != null -> {
+                    // Treat each character in the symbol/punctuation sequence as a token
+                    tokenCount += match.value.length
+                }
+                // Group 3: Whitespace - Ignored for token count.
+            }
+        }
+
+        return tokenCount
+    }
+
     override fun actionPerformed(e: AnActionEvent) {
         LOGGER.info("Action initiated: DumpFolderContentsAction")
         val project = e.project
         val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)
         if (project == null || selectedFiles.isNullOrEmpty()) {
             LOGGER.warn("Action aborted: No project found or no files selected.")
-            showNotification(project, "Error", "No files selected", NotificationType.ERROR)
+            showNotification("Error", "No files selected", NotificationType.ERROR, project)
             return
         }
 
@@ -62,7 +137,6 @@ class DumpFolderContentsAction : AnAction() {
 
                 runBlocking {
                     val processingScope = this
-
                     val jobs = selectedFiles.map { file ->
                         launch(Dispatchers.IO) {
                             ensureActive()
@@ -71,40 +145,34 @@ class DumpFolderContentsAction : AnAction() {
                             if (fileCount >= settings.state.fileCount) {
                                 if (processingScope.isActive) {
                                     LOGGER.info("File count limit (${settings.state.fileCount}) reached or exceeded. Requesting cancellation.")
-                                    notifyFileLimitReached(project, settings.state.fileCount)
+                                    notifyFileLimitReached(settings.state.fileCount, project)
                                     processingScope.cancel()
                                 }
                             }
                         }
                     }
-                    try {
-                        jobs.joinAll()
-                    } catch (ce: CancellationException) {
-                        LOGGER.info("Processing cancelled, likely due to file limit.")
-                    } catch (e: Exception) {
-                        LOGGER.error("Error waiting for processing jobs", e)
-                    }
-                }
+                    try { jobs.joinAll() }
+                    catch (ce: CancellationException) { LOGGER.info("Processing cancelled, likely due to file limit.") }
+                    catch (e: Exception) { LOGGER.error("Error waiting for processing jobs", e) }
+                } // End runBlocking
 
                 indicator.text = "Finalizing..."
                 if (fileContents.isEmpty()) {
                     LOGGER.warn("No file contents were collected for clipboard operation.")
-                    showNotification(project, "Warning", "No content to copy (check filters, size limits, and ignored files)", NotificationType.WARNING)
+                    showNotification("Warning", "No content to copy (check filters, size limits, and ignored files)", NotificationType.WARNING, project)
                 } else {
                     val sb = StringBuilder()
                     sb.append(fileContents.joinToString("\n"))
                     try {
                         val text = sb.toString()
-                        copyToClipboard(project, text)
-                        LOGGER.info("Successfully copied contents to clipboard. Content size: ${text.length} characters")
+                        copyToClipboard(text, project)
                     } catch (ex: Exception) {
                         LOGGER.error("Failed to copy contents to clipboard.", ex)
-                        showNotification(project, "Error", "Failed to copy to clipboard: ${ex.message}", NotificationType.ERROR)
+                        showNotification("Error", "Failed to copy to clipboard: ${ex.message}", NotificationType.ERROR, project)
                     }
                 }
-
                 LOGGER.info("Action completed: DumpFolderContentsAction")
-                showOperationSummary(project, settings.state.filenameFilters, excludedFileCount, processedFileCount, excludedExtensions, settings.state.areFiltersEnabled)
+                showOperationSummary(settings.state.filenameFilters, excludedFileCount, processedFileCount, excludedExtensions, settings.state.areFiltersEnabled, project)
             }
         })
     }
@@ -118,7 +186,6 @@ class DumpFolderContentsAction : AnAction() {
         scope: CoroutineScope
     ) {
         scope.ensureActive()
-
         val repositoryRoot = getRepositoryRoot(project)
 
         if (file.name in settings.state.ignoredNames) {
@@ -224,7 +291,6 @@ class DumpFolderContentsAction : AnAction() {
         try {
             for (file in directory.children) {
                 scope.ensureActive()
-
                 if (fileCount >= settings.state.fileCount) {
                     LOGGER.debug("File limit reached within directory loop: ${directory.path}. Stopping further processing in this directory.")
                     return
@@ -241,13 +307,11 @@ class DumpFolderContentsAction : AnAction() {
 
     private fun getRepositoryRoot(project: Project): VirtualFile? {
         val projectRootManager = ProjectRootManager.getInstance(project)
-        val contentRoots = projectRootManager.contentRoots
-        return contentRoots.firstOrNull()
+        return projectRootManager.contentRoots.firstOrNull()
     }
 
     private fun isBinaryFile(file: VirtualFile): Boolean {
         if (file.length == 0L) return false
-
         val sampleSize = min(file.length, 1024).toInt()
         val bytes = try {
             file.inputStream.use { it.readNBytes(sampleSize) }
@@ -257,24 +321,15 @@ class DumpFolderContentsAction : AnAction() {
         }
 
         val nullByteCount = bytes.count { it == 0x00.toByte() }
-        if (nullByteCount > 0) {
-            return true
-        }
+        if (nullByteCount > 0) return true
 
         val nonTextBytes = bytes.count {
             val byteVal = it.toInt() and 0xFF
-            (byteVal < 0x20 && byteVal !in listOf(0x09, 0x0A, 0x0D)) ||
-            (byteVal > 0x7E)
+            (byteVal < 0x20 && byteVal !in listOf(0x09, 0x0A, 0x0D)) || (byteVal > 0x7E)
         }
-
         val threshold = 0.10
         val nonTextRatio = if (sampleSize > 0) nonTextBytes.toFloat() / sampleSize else 0f
-
-        if (nonTextRatio > threshold) {
-            return true
-        }
-
-        return false
+        return nonTextRatio > threshold
     }
 
     private fun fileContentsToString(file: VirtualFile): String {
@@ -286,38 +341,41 @@ class DumpFolderContentsAction : AnAction() {
         }
     }
 
-    private fun copyToClipboard(project: Project?, text: String) {
-        LOGGER.info("Copying to clipboard. Content length: ${text.length} characters")
+    private fun copyToClipboard(text: String, project: Project?) {
+        val charCount = text.length
+        val approxTokens = estimateTokensWithSubwordHeuristic(text)
+
+        LOGGER.info("Copying to clipboard. Chars: $charCount, Approx Tokens (Subword Heuristic): $approxTokens")
         try {
             CopyPasteManager.getInstance().setContents(StringSelection(text))
             showNotification(
-                project,
                 "Content Copied",
-                "Selected content (${processedFileCount} files, ${text.length} chars) copied to clipboard.",
-                NotificationType.INFORMATION
+                "Selected content (${processedFileCount} files, $charCount chars, ~$approxTokens tokens) copied.",
+                NotificationType.INFORMATION,
+                project
             )
         } catch (e: Exception) {
             LOGGER.error("Failed to set clipboard contents", e)
-            showNotification(project, "Error", "Failed to copy to clipboard: ${e.message}", NotificationType.ERROR)
+            showNotification("Error", "Failed to copy to clipboard: ${e.message}", NotificationType.ERROR, project)
         }
     }
 
-    private fun notifyFileLimitReached(project: Project?, limit: Int) {
+    private fun notifyFileLimitReached(limit: Int, project: Project? = null) {
         showNotification(
-            project,
             "File Limit Reached",
             "Processing stopped after reaching the limit of $limit files.",
-            NotificationType.WARNING
+            NotificationType.WARNING,
+            project
         )
     }
 
     private fun showOperationSummary(
-        project: Project?,
         filters: List<String>,
         excludedFiles: Int,
         processedFiles: Int,
         excludedTypes: Set<String>,
-        filtersWereEnabled: Boolean
+        filtersWereEnabled: Boolean,
+        project: Project?
     ) {
         val summaryLines = mutableListOf<String>()
         summaryLines.add("Processed files: $processedFiles")
@@ -338,19 +396,18 @@ class DumpFolderContentsAction : AnAction() {
         }
 
         showNotification(
-            project,
             "Export Operation Summary",
-            summaryLines.joinToString("\n"),
-            NotificationType.INFORMATION
+            summaryLines.joinToString("<br>"),
+            NotificationType.INFORMATION,
+            project
         )
     }
 
-    private fun showNotification(project: Project?, title: String, content: String, type: NotificationType) {
-        val formattedContent = content.replace("\n", "<br>")
+    private fun showNotification(title: String, content: String, type: NotificationType, project: Project? = null) {
         val notification = Notification(
             NOTIFICATION_GROUP_ID,
             title,
-            formattedContent,
+            content,
             type
         )
         Notifications.Bus.notify(notification, project)
@@ -360,7 +417,6 @@ class DumpFolderContentsAction : AnAction() {
         private val LOGGER = Logger.getInstance(DumpFolderContentsAction::class.java)
         private const val FILENAME_PREFIX = "// filename: "
         private const val NOTIFICATION_GROUP_ID = "SourceClipboardExport"
-
         private val COMMON_BINARY_EXTENSIONS = setOf(
             "png", "jpg", "jpeg", "gif", "bmp", "tiff", "ico",
             "mp3", "wav", "ogg", "flac", "aac",
@@ -368,14 +424,12 @@ class DumpFolderContentsAction : AnAction() {
             "zip", "rar", "7z", "tar", "gz", "bz2",
             "exe", "dll", "so", "dylib", "app",
             "o", "obj", "lib", "a",
-            "class",
-            "pyc",
+            "class", "pyc",
             "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
             "jar", "war", "ear",
             "woff", "woff2", "ttf", "otf", "eot",
             "db", "sqlite", "mdb",
-            "iso", "img",
-            "swf"
+            "iso", "img", "swf"
         )
     }
 }
