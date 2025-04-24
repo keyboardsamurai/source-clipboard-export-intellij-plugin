@@ -1,10 +1,11 @@
-package com.keyboardsamurais.intellij.plugin.sourceclipboardexport
+package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.AppConstants
 
 @Service(Service.Level.APP)
 @State(
@@ -17,7 +18,7 @@ class SourceClipboardExportSettings : PersistentStateComponent<SourceClipboardEx
         var filenameFilters: MutableList<String> = mutableListOf()
         var areFiltersEnabled: Boolean = true
         var maxFileSizeKb: Int = 100
-        var ignoredNames: MutableList<String> = mutableListOf(".git", "node_modules", "build", "target", "__pycache__")
+        var ignoredNames: MutableList<String> = AppConstants.DEFAULT_IGNORED_NAMES.toMutableList()
         var includePathPrefix: Boolean = true
     }
 
@@ -27,7 +28,7 @@ class SourceClipboardExportSettings : PersistentStateComponent<SourceClipboardEx
 
     override fun loadState(state: State) {
         if (state.ignoredNames.isNullOrEmpty()) {
-            state.ignoredNames = mutableListOf(".git", "node_modules", "build", "target", "__pycache__")
+            state.ignoredNames = AppConstants.DEFAULT_IGNORED_NAMES.toMutableList()
         }
         myState = state
     }
@@ -37,4 +38,4 @@ class SourceClipboardExportSettings : PersistentStateComponent<SourceClipboardEx
             return ApplicationManager.getApplication().getService(SourceClipboardExportSettings::class.java)
         }
     }
-}
+} 
