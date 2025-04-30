@@ -5,10 +5,14 @@ plugins {
 }
 
 group = "com.keyboardsamurais.intellij.plugin"
-version = "1.6"
+version = "1.7"
 
 repositories {
     mavenCentral()
+}
+
+dependencies {
+    implementation("com.knuddels:jtokkit:1.1.0")
 }
 
 // Configure Gradle IntelliJ Plugin

@@ -39,7 +39,11 @@
 ]]></description>
 
     <change-notes><![CDATA[
-        <h3>Version 1.6 - New Features & Improvements</h3>
+        <h3>Version 1.7 - New Features & Improvements</h3>
+        <ul>
+            <li>Token Count improvement: Token count is now based on GPT-4, calculated by the awesome <a href="https://github.com/knuddelsgmbh/jtokkit">Jtokkit library</a></li>
+        </ul>
+        <h3>Version 1.6</h3>
         <ul>
             <li><b>Gitignore Support:</b> The plugin now respects rules defined in your project's <code>.gitignore</code> files, automatically excluding matching files and directories from the export. The UI shows a count of files excluded by these rules.</li>
             <li><b>Token Count Estimation:</b> Implemented token count estimation for exported code (useful for managing LLM context limits).</li>
