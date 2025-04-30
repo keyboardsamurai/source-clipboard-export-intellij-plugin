@@ -6,6 +6,8 @@ import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceClipboardExportSettings
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.gitignore.HierarchicalGitignoreParser
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.AppConstants
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.AppConstants.OutputFormat
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.FileUtils
 import io.mockk.every
 import io.mockk.just
@@ -56,6 +58,7 @@ class SourceExporterTest {
         every { mockSettings.filenameFilters } returns mutableListOf<String>()
         every { mockSettings.ignoredNames } returns mutableListOf<String>()
         every { mockSettings.includePathPrefix } returns true
+        every { mockSettings.outputFormat } returns OutputFormat.PLAIN_TEXT
 
         // Mock ProjectRootManager
         val mockProjectRootManager = mockk<ProjectRootManager>()
@@ -135,6 +138,95 @@ class SourceExporterTest {
         assertEquals(0, result.processedFileCount, "No files should be processed")
         assertEquals(1, result.excludedByGitignoreCount, "One file should be excluded by gitignore")
         assertEquals("", result.content, "Content should be empty")
+    }
+
+    @Test
+    fun `exportSources formats output as Markdown when format is MARKDOWN`() = runBlocking {
+        // Arrange
+        every { mockSettings.outputFormat } returns OutputFormat.MARKDOWN
+        val fileContent = "class Example { }"
+        every { FileUtils.readFileContent(mockFile) } returns fileContent
+
+        val files = arrayOf(mockFile)
+
+        // Act
+        val result = sourceExporter.exportSources(files)
+
+        // Assert
+        assertTrue(result.content.contains("### path/to/file.txt"), "Content should contain Markdown heading")
+        assertTrue(result.content.contains("```text"), "Content should contain Markdown code block with proper language hint")
+        assertTrue(result.content.contains(fileContent), "Content should contain the file content")
+        assertTrue(result.content.contains("```"), "Content should contain Markdown code block closing")
+    }
+
+    @Test
+    fun `markdown language hints map correctly for different file extensions`() {
+        // This test directly verifies the mapping logic without involving SourceExporter
+
+        // Test common programming languages
+        assertEquals("kotlin", AppConstants.MARKDOWN_LANGUAGE_HINTS["kt"], "Kotlin file extension should map to 'kotlin'")
+        assertEquals("java", AppConstants.MARKDOWN_LANGUAGE_HINTS["java"], "Java file extension should map to 'java'")
+        assertEquals("python", AppConstants.MARKDOWN_LANGUAGE_HINTS["py"], "Python file extension should map to 'python'")
+        assertEquals("javascript", AppConstants.MARKDOWN_LANGUAGE_HINTS["js"], "JavaScript file extension should map to 'javascript'")
+        assertEquals("typescript", AppConstants.MARKDOWN_LANGUAGE_HINTS["ts"], "TypeScript file extension should map to 'typescript'")
+        assertEquals("csharp", AppConstants.MARKDOWN_LANGUAGE_HINTS["cs"], "C# file extension should map to 'csharp'")
+
+        // Test markup and style languages
+        assertEquals("html", AppConstants.MARKDOWN_LANGUAGE_HINTS["html"], "HTML file extension should map to 'html'")
+        assertEquals("css", AppConstants.MARKDOWN_LANGUAGE_HINTS["css"], "CSS file extension should map to 'css'")
+        assertEquals("markdown", AppConstants.MARKDOWN_LANGUAGE_HINTS["md"], "Markdown file extension should map to 'markdown'")
+
+        // Test data formats
+        assertEquals("json", AppConstants.MARKDOWN_LANGUAGE_HINTS["json"], "JSON file extension should map to 'json'")
+        assertEquals("yaml", AppConstants.MARKDOWN_LANGUAGE_HINTS["yml"], "YAML file extension should map to 'yaml'")
+
+        // Test configuration files
+        assertEquals("dockerfile", AppConstants.MARKDOWN_LANGUAGE_HINTS["Dockerfile"], "Dockerfile should map to 'dockerfile'")
+        assertEquals("makefile", AppConstants.MARKDOWN_LANGUAGE_HINTS["Makefile"], "Makefile should map to 'makefile'")
+
+        // Test other
+        assertEquals("text", AppConstants.MARKDOWN_LANGUAGE_HINTS["txt"], "Text file extension should map to 'text'")
+    }
+
+    @Test
+    fun `exportSources formats output as XML when format is XML`() = runBlocking {
+        // Arrange
+        every { mockSettings.outputFormat } returns OutputFormat.XML
+        val fileContent = "class Example { }"
+        every { FileUtils.readFileContent(mockFile) } returns fileContent
+
+        val files = arrayOf(mockFile)
+
+        // Act
+        val result = sourceExporter.exportSources(files)
+
+        // Assert
+        assertTrue(result.content.contains("<files>"), "Content should contain XML root element")
+        assertTrue(result.content.contains("<file path=\"path/to/file.txt\">"), "Content should contain file element with path attribute")
+        assertTrue(result.content.contains("<content><![CDATA["), "Content should contain CDATA section")
+        assertTrue(result.content.contains(fileContent), "Content should contain the file content")
+        assertTrue(result.content.contains("]]></content>"), "Content should contain closing CDATA and content tags")
+        assertTrue(result.content.contains("</file>"), "Content should contain closing file tag")
+        assertTrue(result.content.contains("</files>"), "Content should contain closing files tag")
+    }
+
+    @Test
+    fun `exportSources formats output as Plain Text when format is PLAIN_TEXT`() = runBlocking {
+        // Arrange
+        every { mockSettings.outputFormat } returns OutputFormat.PLAIN_TEXT
+        val fileContent = "class Example { }"
+        every { FileUtils.readFileContent(mockFile) } returns fileContent
+
+        val files = arrayOf(mockFile)
+
+        // Act
+        val result = sourceExporter.exportSources(files)
+
+        // Assert
+        assertTrue(result.content.contains("// filename: path/to/file.txt"), "Content should contain filename prefix")
+        assertTrue(result.content.contains(fileContent), "Content should contain the file content")
+        assertFalse(result.content.contains("```"), "Content should not contain Markdown code block markers")
+        assertFalse(result.content.contains("<files>"), "Content should not contain XML tags")
     }
 
     @Test

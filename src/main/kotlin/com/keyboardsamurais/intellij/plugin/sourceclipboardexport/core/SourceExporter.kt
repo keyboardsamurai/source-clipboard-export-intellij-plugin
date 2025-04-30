@@ -38,6 +38,17 @@ class SourceExporter(
     private val excludedByGitignoreCount = AtomicInteger(0)
     private val excludedExtensions = Collections.synchronizedSet(mutableSetOf<String>())
 
+    /**
+     * Escapes special characters in XML content.
+     */
+    private fun escapeXml(input: String): String {
+        return input.replace("&", "&amp;")
+                   .replace("<", "&lt;")
+                   .replace(">", "&gt;")
+                   .replace("\"", "&quot;")
+                   .replace("'", "&apos;")
+    }
+
     // Store the hierarchical gitignore parser instance
     private val hierarchicalGitignoreParser = HierarchicalGitignoreParser(project)
 
@@ -105,8 +116,68 @@ class SourceExporter(
             }
         }
 
-        // Add file contents
-        contentBuilder.append(fileContents.joinToString("\n"))
+        // Format and add file contents based on the selected output format
+        when (settings.outputFormat) {
+            AppConstants.OutputFormat.PLAIN_TEXT -> {
+                // Current default format - no changes needed
+                contentBuilder.append(fileContents.joinToString("\n"))
+            }
+            AppConstants.OutputFormat.MARKDOWN -> {
+                // Format as Markdown with code blocks
+                for (content in fileContents) {
+                    if (content.startsWith(AppConstants.FILENAME_PREFIX)) {
+                        // Extract the path from the first line
+                        val firstLine = content.substringBefore('\n')
+                        val path = firstLine.substring(AppConstants.FILENAME_PREFIX.length).trim()
+
+                        // Extract the file extension to use as language hint
+                        val extension = path.substringAfterLast('.', "").lowercase()
+                        // Use the markdown language hint mapping to get the proper language name
+                        val languageHint = if (extension.isNotEmpty()) {
+                            AppConstants.MARKDOWN_LANGUAGE_HINTS[extension] ?: "text"
+                        } else {
+                            "text"
+                        }
+
+                        // Add markdown heading for the file
+                        contentBuilder.append("### $path\n\n")
+
+                        // Add the content in a code block with language hint
+                        val fileContent = content.substringAfter('\n')
+                        contentBuilder.append("```$languageHint\n")
+                        contentBuilder.append(fileContent)
+                        contentBuilder.append("\n```\n\n")
+                    } else {
+                        // If there's no filename prefix, just add the content in a code block
+                        contentBuilder.append("```\n")
+                        contentBuilder.append(content)
+                        contentBuilder.append("\n```\n\n")
+                    }
+                }
+            }
+            AppConstants.OutputFormat.XML -> {
+                // Format as XML for machine consumption
+                contentBuilder.append("<files>\n")
+                for (content in fileContents) {
+                    if (content.startsWith(AppConstants.FILENAME_PREFIX)) {
+                        // Extract the path from the first line
+                        val firstLine = content.substringBefore('\n')
+                        val path = firstLine.substring(AppConstants.FILENAME_PREFIX.length).trim()
+
+                        // Extract the file content (everything after the first line)
+                        val fileContent = content.substringAfter('\n')
+
+                        // Add XML tags for the file
+                        contentBuilder.append("  <file path=\"${escapeXml(path)}\">\n")
+                        contentBuilder.append("    <content><![CDATA[\n")
+                        contentBuilder.append(fileContent)
+                        contentBuilder.append("\n    ]]></content>\n")
+                        contentBuilder.append("  </file>\n")
+                    }
+                }
+                contentBuilder.append("</files>")
+            }
+        }
 
         val finalContent = contentBuilder.toString()
         return ExportResult(

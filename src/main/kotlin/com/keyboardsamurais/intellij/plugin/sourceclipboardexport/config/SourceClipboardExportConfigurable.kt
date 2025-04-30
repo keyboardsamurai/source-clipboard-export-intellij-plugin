@@ -9,6 +9,7 @@ import com.intellij.ui.table.JBTable
 import com.intellij.util.ui.JBUI
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.ui.PlaceholderTextField
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.ui.TableButtonColumn
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.AppConstants.OutputFormat
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.StringUtils
 import java.awt.BorderLayout
 import java.awt.Dimension
@@ -18,6 +19,7 @@ import java.awt.GridBagLayout
 import java.awt.GridLayout
 import javax.swing.BorderFactory
 import javax.swing.JButton
+import javax.swing.JComboBox
 import javax.swing.JComponent
 import javax.swing.JLabel
 import javax.swing.JOptionPane
@@ -40,6 +42,7 @@ class SourceClipboardExportConfigurable : Configurable {
     private var includePathPrefixCheckBox: JBCheckBox? = null
     private var includeDirectoryStructureCheckBox: JBCheckBox? = null
     private var includeFilesInStructureCheckBox: JBCheckBox? = null
+    private var outputFormatComboBox: JComboBox<String>? = null
 
     override fun createComponent(): JComponent? {
         settingsPanel = JPanel(GridBagLayout())
@@ -48,6 +51,7 @@ class SourceClipboardExportConfigurable : Configurable {
         addFileLimitsPanel(gbc)
         addPathPrefixToggle(gbc)
         addDirectoryStructureToggles(gbc)
+        addOutputFormatDropdown(gbc)
         addFiltersPanel(gbc)
         addFiltersTable(gbc)
         addIgnoredNamesPanel(gbc)
@@ -117,6 +121,24 @@ class SourceClipboardExportConfigurable : Configurable {
         structurePanel.add(includeFilesInStructureCheckBox)
 
         settingsPanel!!.add(structurePanel, gbc)
+        gbc.gridy++
+    }
+
+    private fun addOutputFormatDropdown(gbc: GridBagConstraints) {
+        val formatPanel = JPanel(FlowLayout(FlowLayout.LEFT, 5, 0))
+        val formatLabel = JLabel("Output Format:")
+        formatLabel.toolTipText = "Select the format for the exported source code."
+
+        outputFormatComboBox = JComboBox<String>().apply {
+            addItem("Plain Text (// filename:)")
+            addItem("Markdown (```lang)")
+            addItem("XML (machine-readable)")
+        }
+
+        formatPanel.add(formatLabel)
+        formatPanel.add(outputFormatComboBox)
+
+        settingsPanel!!.add(formatPanel, gbc)
         gbc.gridy++
     }
 
@@ -231,6 +253,14 @@ class SourceClipboardExportConfigurable : Configurable {
             ?.filter { it.isNotEmpty() }
             ?.toMutableList() ?: mutableListOf()
 
+        val selectedFormatIndex = outputFormatComboBox?.selectedIndex ?: 0
+        val currentOutputFormat = when (selectedFormatIndex) {
+            0 -> OutputFormat.PLAIN_TEXT
+            1 -> OutputFormat.MARKDOWN
+            2 -> OutputFormat.XML
+            else -> OutputFormat.PLAIN_TEXT
+        }
+
         // Compare each setting
         return fileCountSpinner!!.value != settings.fileCount ||
                maxFileSizeSpinner!!.value != settings.maxFileSizeKb ||
@@ -238,7 +268,8 @@ class SourceClipboardExportConfigurable : Configurable {
                includeDirectoryStructureCheckBox!!.isSelected != settings.includeDirectoryStructure ||
                includeFilesInStructureCheckBox!!.isSelected != settings.includeFilesInStructure ||
                currentFilters != settings.filenameFilters || // Direct list comparison
-               currentIgnoredNames != settings.ignoredNames // Direct list comparison
+               currentIgnoredNames != settings.ignoredNames || // Direct list comparison
+               currentOutputFormat != settings.outputFormat
     }
 
     override fun apply() {
@@ -250,6 +281,16 @@ class SourceClipboardExportConfigurable : Configurable {
         settings.includePathPrefix = includePathPrefixCheckBox!!.isSelected
         settings.includeDirectoryStructure = includeDirectoryStructureCheckBox!!.isSelected
         settings.includeFilesInStructure = includeFilesInStructureCheckBox!!.isSelected
+
+        // Update output format from dropdown
+        val selectedFormatIndex = outputFormatComboBox?.selectedIndex ?: 0
+        settings.outputFormat = when (selectedFormatIndex) {
+            0 -> OutputFormat.PLAIN_TEXT
+            1 -> OutputFormat.MARKDOWN
+            2 -> OutputFormat.XML
+            else -> OutputFormat.PLAIN_TEXT
+        }
+
         settings.filenameFilters = (0 until filtersTableModel!!.rowCount).map {
             filtersTableModel!!.getValueAt(it, 0) as String
         }.toMutableList() // Create new list
@@ -260,7 +301,8 @@ class SourceClipboardExportConfigurable : Configurable {
 
         LOGGER.debug("Applying settings: File count = ${settings.fileCount}, Max Size KB = ${settings.maxFileSizeKb}, " +
                 "Include Prefix = ${settings.includePathPrefix}, Include Directory Structure = ${settings.includeDirectoryStructure}, " +
-                "Include Files in Structure = ${settings.includeFilesInStructure}, Filters = ${settings.filenameFilters.joinToString()}, " +
+                "Include Files in Structure = ${settings.includeFilesInStructure}, Output Format = ${settings.outputFormat}, " +
+                "Filters = ${settings.filenameFilters.joinToString()}, " +
                 "Ignored = ${settings.ignoredNames.joinToString()}")
     }
 
@@ -272,6 +314,14 @@ class SourceClipboardExportConfigurable : Configurable {
         includeDirectoryStructureCheckBox!!.isSelected = settings.includeDirectoryStructure
         includeFilesInStructureCheckBox!!.isSelected = settings.includeFilesInStructure
 
+        // Set the output format dropdown
+        val formatIndex = when (settings.outputFormat) {
+            OutputFormat.PLAIN_TEXT -> 0
+            OutputFormat.MARKDOWN -> 1
+            OutputFormat.XML -> 2
+        }
+        outputFormatComboBox!!.selectedIndex = formatIndex
+
         // Clear and repopulate table model
         filtersTableModel!!.rowCount = 0
         settings.filenameFilters.forEach { filter ->
@@ -282,7 +332,8 @@ class SourceClipboardExportConfigurable : Configurable {
 
         LOGGER.debug("Resetting settings UI to: File count = ${settings.fileCount}, Max Size KB = ${settings.maxFileSizeKb}, " +
                 "Include Prefix = ${settings.includePathPrefix}, Include Directory Structure = ${settings.includeDirectoryStructure}, " +
-                "Include Files in Structure = ${settings.includeFilesInStructure}, Filters = ${settings.filenameFilters.joinToString()}, " +
+                "Include Files in Structure = ${settings.includeFilesInStructure}, Output Format = ${settings.outputFormat}, " +
+                "Filters = ${settings.filenameFilters.joinToString()}, " +
                 "Ignored = ${settings.ignoredNames.joinToString()}")
     }
 
