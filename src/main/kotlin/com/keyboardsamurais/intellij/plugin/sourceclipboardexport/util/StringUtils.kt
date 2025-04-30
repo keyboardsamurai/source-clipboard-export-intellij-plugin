@@ -24,4 +24,15 @@ object StringUtils {
     fun isValidFilterFormat(filter: String): Boolean {
         return filter.matches(Regex("^\\.?\\w+$"))
     }
+
+    /**
+     * Escapes special characters in XML content.
+     */
+    fun escapeXml(input: String): String {
+        return input.replace("&", "&amp;")
+                   .replace("<", "&lt;")
+                   .replace(">", "&gt;")
+                   .replace("\"", "&quot;")
+                   .replace("'", "&apos;")
+    }
 } 

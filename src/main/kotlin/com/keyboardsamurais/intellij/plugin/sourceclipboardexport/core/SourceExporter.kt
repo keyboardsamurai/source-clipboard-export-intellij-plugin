@@ -8,6 +8,7 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceC
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.gitignore.HierarchicalGitignoreParser
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.AppConstants
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.FileUtils
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.StringUtils
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +19,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.*
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.min
 
@@ -27,7 +29,7 @@ class SourceExporter(
     private val indicator: ProgressIndicator
 ) {
     private val logger = Logger.getInstance(SourceExporter::class.java)
-    private val fileContents = Collections.synchronizedList(mutableListOf<String>())
+    private val fileContents = CopyOnWriteArrayList<String>()
     // Use AtomicIntegers for thread-safe counting from multiple coroutines
     private val fileCount = AtomicInteger(0)
     private val processedFileCount = AtomicInteger(0)
@@ -38,16 +40,6 @@ class SourceExporter(
     private val excludedByGitignoreCount = AtomicInteger(0)
     private val excludedExtensions = Collections.synchronizedSet(mutableSetOf<String>())
 
-    /**
-     * Escapes special characters in XML content.
-     */
-    private fun escapeXml(input: String): String {
-        return input.replace("&", "&amp;")
-                   .replace("<", "&lt;")
-                   .replace(">", "&gt;")
-                   .replace("\"", "&quot;")
-                   .replace("'", "&apos;")
-    }
 
     // Store the hierarchical gitignore parser instance
     private val hierarchicalGitignoreParser = HierarchicalGitignoreParser(project)
@@ -185,7 +177,7 @@ class SourceExporter(
                         val fileContent = content.substringAfter('\n')
 
                         // Add XML tags for the file
-                        contentBuilder.append("  <file path=\"${escapeXml(path)}\">\n")
+                        contentBuilder.append("  <file path=\"${StringUtils.escapeXml(path)}\">\n")
                         contentBuilder.append("    <content><![CDATA[\n")
                         contentBuilder.append(fileContent)
                         contentBuilder.append("\n    ]]></content>\n")
@@ -230,6 +222,9 @@ class SourceExporter(
             return
         }
 
+        // Check cancellation again after basic checks
+        scope.ensureActive()
+
         // --- Calculate Relative Path (relative to project root for the single parser) ---
         val relativePath = try {
             FileUtils.getRelativePath(file, project) // Assumes this gives path relative to project root
@@ -243,6 +238,9 @@ class SourceExporter(
             // Decide whether to proceed without gitignore check or skip entirely
             // Let's proceed for now, but log it clearly.
         }
+
+        // Check cancellation again after calculating relative path
+        scope.ensureActive()
 
         // --- Logging for Gitignore Debugging ---
         logger.info("Processing entry: '${file.name}' | Relative Path: '$relativePath' | isDirectory: ${file.isDirectory}")
@@ -258,6 +256,9 @@ class SourceExporter(
             return
         }
 
+        // Check cancellation again after ignored names check
+        scope.ensureActive()
+
         // 2. Gitignore Check (using hierarchical parser)
         try {
             val isIgnoredByGit = hierarchicalGitignoreParser.isIgnored(file)
@@ -272,6 +273,8 @@ class SourceExporter(
             logger.warn(">>> Gitignore Check: ERROR checking status for '${file.path}'. File will be processed.", e)
         }
 
+        // Check cancellation again after gitignore check
+        scope.ensureActive()
 
         // --- Process Valid, Non-Ignored Entry ---
         if (file.isDirectory) {
@@ -302,6 +305,9 @@ class SourceExporter(
 
                 // Recursively process children - processEntry will handle all checks for the child
                 processEntry(child, scope)
+
+                // Check cancellation after processing each child
+                scope.ensureActive()
             }
         } catch (ce: CancellationException) {
             logger.info("Directory processing cancelled: ${directory.path}")
@@ -419,13 +425,12 @@ class SourceExporter(
                 logger.info("Added file content ($currentProcessedCount/$currentFileCount): $relativePath")
 
                 // Update progress indicator
-                if (!indicator.isCanceled) {
-                    val targetCount = settings.fileCount.toDouble()
-                    if (targetCount > 0) {
-                        indicator.fraction = min(1.0, currentFileCount.toDouble() / targetCount)
-                    }
-                    indicator.text = "Processed $currentProcessedCount files..."
+                indicator.checkCanceled() // Use checkCanceled() instead of !isCanceled
+                val targetCount = settings.fileCount.toDouble()
+                if (targetCount > 0) {
+                    indicator.fraction = min(1.0, currentFileCount.toDouble() / targetCount)
                 }
+                indicator.text = "Processed $currentProcessedCount files..."
 
                 // Check if limit is now reached *after* adding
                 if (currentFileCount >= settings.fileCount) {
