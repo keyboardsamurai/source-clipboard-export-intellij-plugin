@@ -306,7 +306,12 @@ class SourceExporter(
             if (fileCount.get() < settings.fileCount) {
                 // Combine filename prefix and content into a single entry to prevent interleaving
                 val contentToAdd = if (settings.includePathPrefix) {
-                    "${AppConstants.FILENAME_PREFIX}$relativePath\n$fileContent"
+                    // Check if the file content already starts with a filename prefix
+                    if (fileContent.startsWith(AppConstants.FILENAME_PREFIX)) {
+                        fileContent
+                    } else {
+                        "${AppConstants.FILENAME_PREFIX}$relativePath\n$fileContent"
+                    }
                 } else {
                     fileContent
                 }

@@ -263,6 +263,47 @@ class SourceExporterTest {
     }
 
     @Test
+    fun `exportSources does not add path prefix when file content already has one`() = runBlocking {
+        // Arrange
+        every { mockSettings.includePathPrefix } returns true
+
+        // Create a mock file with content that already has a filename prefix
+        val mockFileWithPrefix = mockk<VirtualFile>(relaxed = true)
+        val existingPrefix = "// filename: existing/path/to/file.kt"
+        val fileContent = "$existingPrefix\nclass Example { }"
+
+        // Set up mock file
+        every { mockFileWithPrefix.isValid } returns true
+        every { mockFileWithPrefix.exists() } returns true
+        every { mockFileWithPrefix.isDirectory } returns false
+        every { mockFileWithPrefix.name } returns "file.kt"
+        every { mockFileWithPrefix.path } returns "/path/to/file.kt"
+        every { mockFileWithPrefix.length } returns fileContent.length.toLong()
+        every { mockFileWithPrefix.extension } returns "kt"
+
+        // Set up FileUtils
+        every { FileUtils.getRelativePath(mockFileWithPrefix, mockProject) } returns "path/to/file.kt"
+        every { FileUtils.readFileContent(mockFileWithPrefix) } returns fileContent
+
+        // Set up gitignore parser
+        every { anyConstructed<HierarchicalGitignoreParser>().isIgnored(mockFileWithPrefix) } returns false
+
+        val files = arrayOf(mockFileWithPrefix)
+
+        // Act
+        val result = sourceExporter.exportSources(files)
+
+        // Assert
+        // Check that the content contains the original file content with the existing prefix
+        assertTrue(result.content.contains(existingPrefix), "Content should contain the existing filename prefix")
+        assertTrue(result.content.contains("class Example { }"), "Content should contain the file content")
+
+        // Check that the prefix wasn't added twice
+        val prefixCount = result.content.split("// filename:").size - 1
+        assertEquals(1, prefixCount, "The filename prefix should appear exactly once")
+    }
+
+    @Test
     fun `exportSources prevents interleaving of content from different files`() = runBlocking {
         // Arrange
         val mockFile1 = mockk<VirtualFile>(relaxed = true)
