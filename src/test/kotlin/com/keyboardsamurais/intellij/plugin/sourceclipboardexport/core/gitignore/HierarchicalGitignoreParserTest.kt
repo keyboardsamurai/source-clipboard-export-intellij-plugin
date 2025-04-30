@@ -1,15 +1,21 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.gitignore
 
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.FileUtils
-import io.mockk.*
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.mockkObject
+import io.mockk.spyk
+import io.mockk.unmockkAll
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.Assertions.*
-import java.lang.reflect.Field
 import java.util.concurrent.ConcurrentHashMap
 
 class HierarchicalGitignoreParserTest {

@@ -1,15 +1,14 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.gitignore
 
-import com.intellij.openapi.diagnostic.Logger
 // Remove Project import if GitignoreParser class doesn't need it directly
 // import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.VfsUtilCore
-import com.intellij.openapi.vfs.VirtualFile
 // Remove VirtualFileManager and Paths imports if not used directly by the class
 // import com.intellij.openapi.vfs.VirtualFileManager
+import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.vfs.VfsUtilCore
+import com.intellij.openapi.vfs.VirtualFile
 import java.nio.file.FileSystems
 import java.nio.file.PathMatcher
-import java.nio.file.Paths
 
 
 /**

@@ -5,9 +5,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.openapi.vfs.VfsUtilCore
-import java.io.IOException
-import java.io.InputStream
 import kotlin.math.min
 
 object FileUtils {

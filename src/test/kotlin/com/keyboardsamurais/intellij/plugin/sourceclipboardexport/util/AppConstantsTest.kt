@@ -1,7 +1,8 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util
 
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.Assertions.*
 
 class AppConstantsTest {
 
