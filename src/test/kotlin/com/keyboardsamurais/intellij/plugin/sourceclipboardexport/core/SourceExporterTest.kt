@@ -304,6 +304,75 @@ class SourceExporterTest {
     }
 
     @Test
+    fun `exportSources uses language-specific comment prefixes`() = runBlocking {
+        // Arrange
+        every { mockSettings.includePathPrefix } returns true
+
+        // Create mock files with different extensions
+        val kotlinFile = mockk<VirtualFile>(relaxed = true)
+        val pythonFile = mockk<VirtualFile>(relaxed = true)
+        val htmlFile = mockk<VirtualFile>(relaxed = true)
+
+        // Set up mock files
+        every { kotlinFile.isValid } returns true
+        every { kotlinFile.exists() } returns true
+        every { kotlinFile.isDirectory } returns false
+        every { kotlinFile.name } returns "example.kt"
+        every { kotlinFile.path } returns "/path/to/example.kt"
+        every { kotlinFile.length } returns 100
+        every { kotlinFile.extension } returns "kt"
+
+        every { pythonFile.isValid } returns true
+        every { pythonFile.exists() } returns true
+        every { pythonFile.isDirectory } returns false
+        every { pythonFile.name } returns "example.py"
+        every { pythonFile.path } returns "/path/to/example.py"
+        every { pythonFile.length } returns 100
+        every { pythonFile.extension } returns "py"
+
+        every { htmlFile.isValid } returns true
+        every { htmlFile.exists() } returns true
+        every { htmlFile.isDirectory } returns false
+        every { htmlFile.name } returns "example.html"
+        every { htmlFile.path } returns "/path/to/example.html"
+        every { htmlFile.length } returns 100
+        every { htmlFile.extension } returns "html"
+
+        // Set up FileUtils
+        every { FileUtils.getRelativePath(kotlinFile, mockProject) } returns "path/to/example.kt"
+        every { FileUtils.getRelativePath(pythonFile, mockProject) } returns "path/to/example.py"
+        every { FileUtils.getRelativePath(htmlFile, mockProject) } returns "path/to/example.html"
+
+        every { FileUtils.readFileContent(kotlinFile) } returns "class Example {}"
+        every { FileUtils.readFileContent(pythonFile) } returns "def example():"
+        every { FileUtils.readFileContent(htmlFile) } returns "<html></html>"
+
+        // Set up gitignore parser
+        every { anyConstructed<HierarchicalGitignoreParser>().isIgnored(kotlinFile) } returns false
+        every { anyConstructed<HierarchicalGitignoreParser>().isIgnored(pythonFile) } returns false
+        every { anyConstructed<HierarchicalGitignoreParser>().isIgnored(htmlFile) } returns false
+
+        val files = arrayOf(kotlinFile, pythonFile, htmlFile)
+
+        // Act
+        val result = sourceExporter.exportSources(files)
+
+        // Assert
+        // Check that the content contains the appropriate comment prefixes for each file type
+        assertTrue(result.content.contains("// filename: path/to/example.kt"), 
+            "Content should contain C-style comment prefix for Kotlin file")
+        assertTrue(result.content.contains("# filename: path/to/example.py"), 
+            "Content should contain hash comment prefix for Python file")
+        assertTrue(result.content.contains("<!-- filename: path/to/example.html -->"), 
+            "Content should contain HTML comment prefix for HTML file")
+
+        // Check that the file content is included
+        assertTrue(result.content.contains("class Example {}"), "Content should contain Kotlin file content")
+        assertTrue(result.content.contains("def example():"), "Content should contain Python file content")
+        assertTrue(result.content.contains("<html></html>"), "Content should contain HTML file content")
+    }
+
+    @Test
     fun `exportSources prevents interleaving of content from different files`() = runBlocking {
         // Arrange
         val mockFile1 = mockk<VirtualFile>(relaxed = true)
