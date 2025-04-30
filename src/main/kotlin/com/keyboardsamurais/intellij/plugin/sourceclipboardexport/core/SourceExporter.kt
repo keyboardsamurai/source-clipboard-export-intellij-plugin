@@ -116,6 +116,23 @@ class SourceExporter(
             }
         }
 
+        // Add repository summary if enabled
+        if (settings.includeRepositorySummary) {
+            val repositorySummary = RepositorySummary(
+                project = project,
+                selectedFiles = selectedFiles,
+                fileContents = fileContents,
+                processedFileCount = processedFileCount.get(),
+                excludedByFilterCount = excludedByFilterCount.get(),
+                excludedBySizeCount = excludedBySizeCount.get(),
+                excludedByBinaryContentCount = excludedByBinaryContentCount.get(),
+                excludedByIgnoredNameCount = excludedByIgnoredNameCount.get(),
+                excludedByGitignoreCount = excludedByGitignoreCount.get()
+            )
+            val summary = repositorySummary.generateSummary(settings.outputFormat)
+            contentBuilder.append(summary)
+        }
+
         // Format and add file contents based on the selected output format
         when (settings.outputFormat) {
             AppConstants.OutputFormat.PLAIN_TEXT -> {
