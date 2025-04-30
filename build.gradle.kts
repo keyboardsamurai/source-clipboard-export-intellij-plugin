@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.keyboardsamurais.intellij.plugin"
-version = "1.5"
+version = "1.6"
 
 repositories {
     mavenCentral()
@@ -30,7 +30,7 @@ tasks {
     }
     patchPluginXml {
         sinceBuild.set("232")
-        untilBuild.set("252")
+        untilBuild.set("252.*")
     }
 
     signPlugin {
