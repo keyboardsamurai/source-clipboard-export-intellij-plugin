@@ -6,6 +6,7 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.AppConstants
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.AppConstants.OutputFormat
 
 @Service(Service.Level.APP)
 @State(
@@ -22,6 +23,7 @@ class SourceClipboardExportSettings : PersistentStateComponent<SourceClipboardEx
         var includePathPrefix: Boolean = true
         var includeDirectoryStructure: Boolean = false
         var includeFilesInStructure: Boolean = false
+        var outputFormat: OutputFormat = OutputFormat.PLAIN_TEXT
     }
 
     private var myState = State()

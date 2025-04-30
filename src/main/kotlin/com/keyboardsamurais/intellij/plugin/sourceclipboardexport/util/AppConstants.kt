@@ -3,6 +3,13 @@ package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util
 object AppConstants {
     const val NOTIFICATION_GROUP_ID = "SourceClipboardExport"
     const val FILENAME_PREFIX = "// filename: " // Default C-style comment prefix
+
+    // Output format options
+    enum class OutputFormat {
+        PLAIN_TEXT,
+        MARKDOWN,
+        XML
+    }
     val DEFAULT_IGNORED_NAMES = listOf(".git", "node_modules", "build", "target", "__pycache__")
     val COMMON_BINARY_EXTENSIONS = setOf(
         "png", "jpg", "jpeg", "gif", "bmp", "tiff", "ico",
@@ -106,5 +113,101 @@ object AppConstants {
         "scss" to "/* filename: */",
         "sass" to "/* filename: */",
         "less" to "/* filename: */"
+    )
+
+    // Map of file extensions to markdown language hints for code blocks
+    // These are the language identifiers recognized by GitHub and other markdown renderers
+    val MARKDOWN_LANGUAGE_HINTS = mapOf(
+        // Programming Languages
+        "c" to "c",
+        "cpp" to "cpp",
+        "cc" to "cpp",
+        "h" to "c",
+        "hpp" to "cpp",
+        "cs" to "csharp",
+        "java" to "java",
+        "js" to "javascript",
+        "jsx" to "jsx",
+        "ts" to "typescript",
+        "tsx" to "tsx",
+        "go" to "go",
+        "rb" to "ruby",
+        "py" to "python",
+        "php" to "php",
+        "pl" to "perl",
+        "kt" to "kotlin",
+        "kts" to "kotlin",
+        "swift" to "swift",
+        "rs" to "rust",
+        "scala" to "scala",
+        "groovy" to "groovy",
+        "gradle" to "gradle",
+        "dart" to "dart",
+        "r" to "r",
+        "sh" to "bash",
+        "bash" to "bash",
+        "zsh" to "bash",
+        "fish" to "fish",
+        "ps1" to "powershell",
+        "bat" to "batch",
+        "cmd" to "batch",
+        "hs" to "haskell",
+        "lua" to "lua",
+        "sql" to "sql",
+        "asm" to "asm",
+        "s" to "asm",
+        "f" to "fortran",
+        "f90" to "fortran",
+        "f95" to "fortran",
+        "lisp" to "lisp",
+        "clj" to "clojure",
+        "cljs" to "clojure",
+        "el" to "lisp",
+        "vb" to "vb",
+        "vbs" to "vbscript",
+        "perl" to "perl",
+        "tcl" to "tcl",
+
+        // Markup and Style Languages
+        "html" to "html",
+        "htm" to "html",
+        "xml" to "xml",
+        "svg" to "svg",
+        "xhtml" to "html",
+        "jsp" to "jsp",
+        "asp" to "asp",
+        "aspx" to "aspx",
+        "css" to "css",
+        "scss" to "scss",
+        "sass" to "sass",
+        "less" to "less",
+        "md" to "markdown",
+        "markdown" to "markdown",
+        "tex" to "latex",
+        "latex" to "latex",
+
+        // Data Formats
+        "json" to "json",
+        "yaml" to "yaml",
+        "yml" to "yaml",
+        "toml" to "toml",
+        "csv" to "csv",
+        "tsv" to "tsv",
+
+        // Configuration Files
+        "ini" to "ini",
+        "conf" to "conf",
+        "properties" to "properties",
+        "prop" to "properties",
+        "env" to "env",
+        "gitignore" to "gitignore",
+        "dockerignore" to "dockerignore",
+        "Dockerfile" to "dockerfile",
+        "makefile" to "makefile",
+        "Makefile" to "makefile",
+
+        // Other
+        "log" to "log",
+        "txt" to "text"
     )
 }
