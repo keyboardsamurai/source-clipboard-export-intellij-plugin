@@ -133,4 +133,38 @@ object FileUtils {
             "// Error reading file: ${file.path} (${e.message})"
         }
     }
-} 
+
+    /**
+     * Gets the appropriate comment prefix for a file based on its extension.
+     * Returns the default C-style comment prefix if the extension is not recognized.
+     *
+     * @param file The file to get the comment prefix for
+     * @return The appropriate comment prefix for the file
+     */
+    fun getCommentPrefix(file: VirtualFile): String {
+        val extension = file.extension?.lowercase() ?: ""
+        return AppConstants.COMMENT_PREFIXES[extension] ?: AppConstants.FILENAME_PREFIX
+    }
+
+    /**
+     * Checks if the file content already starts with any of the known filename prefixes.
+     *
+     * @param fileContent The content of the file to check
+     * @return True if the file content already starts with a filename prefix, false otherwise
+     */
+    fun hasFilenamePrefix(fileContent: String): Boolean {
+        // Check for standard prefixes (non-HTML style)
+        val standardPrefixMatch = AppConstants.COMMENT_PREFIXES.values
+            .filter { !it.endsWith("-->") }
+            .any { prefix -> fileContent.startsWith(prefix) }
+
+        if (standardPrefixMatch) return true
+
+        // Special check for HTML-style comments
+        val htmlPrefixPattern = """^\s*<!--\s*filename:\s*.*\s*-->""".toRegex()
+        if (htmlPrefixPattern.find(fileContent) != null) return true
+
+        // Check default prefix as fallback
+        return fileContent.startsWith(AppConstants.FILENAME_PREFIX)
+    }
+}

@@ -306,11 +306,19 @@ class SourceExporter(
             if (fileCount.get() < settings.fileCount) {
                 // Combine filename prefix and content into a single entry to prevent interleaving
                 val contentToAdd = if (settings.includePathPrefix) {
-                    // Check if the file content already starts with a filename prefix
-                    if (fileContent.startsWith(AppConstants.FILENAME_PREFIX)) {
+                    // Check if the file content already starts with any filename prefix
+                    if (FileUtils.hasFilenamePrefix(fileContent)) {
                         fileContent
                     } else {
-                        "${AppConstants.FILENAME_PREFIX}$relativePath\n$fileContent"
+                        // Get the appropriate comment prefix for this file type
+                        val commentPrefix = FileUtils.getCommentPrefix(file)
+                        // For HTML-style comments, insert the path before the closing tag
+                        val formattedPrefix = if (commentPrefix.endsWith("-->")) {
+                            commentPrefix.replace("-->", "$relativePath -->")
+                        } else {
+                            "$commentPrefix$relativePath"
+                        }
+                        "$formattedPrefix\n$fileContent"
                     }
                 } else {
                     fileContent
