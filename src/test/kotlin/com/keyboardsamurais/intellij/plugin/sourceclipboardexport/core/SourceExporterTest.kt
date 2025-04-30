@@ -261,4 +261,86 @@ class SourceExporterTest {
         // Assert
         assertFalse(result.content.contains("path/to/file.txt"), "Content should not contain path prefix")
     }
+
+    @Test
+    fun `exportSources prevents interleaving of content from different files`() = runBlocking {
+        // Arrange
+        val mockFile1 = mockk<VirtualFile>(relaxed = true)
+        val mockFile2 = mockk<VirtualFile>(relaxed = true)
+
+        // Create large content for each file
+        val file1Content = buildString {
+            repeat(100) { append("Line $it of file 1\n") }
+        }
+        val file2Content = buildString {
+            repeat(100) { append("Line $it of file 2\n") }
+        }
+
+        // Set up mock files
+        every { mockFile1.isValid } returns true
+        every { mockFile1.exists() } returns true
+        every { mockFile1.isDirectory } returns false
+        every { mockFile1.name } returns "file1.txt"
+        every { mockFile1.path } returns "/path/to/file1.txt"
+        every { mockFile1.length } returns file1Content.length.toLong()
+        every { mockFile1.extension } returns "txt"
+
+        every { mockFile2.isValid } returns true
+        every { mockFile2.exists() } returns true
+        every { mockFile2.isDirectory } returns false
+        every { mockFile2.name } returns "file2.txt"
+        every { mockFile2.path } returns "/path/to/file2.txt"
+        every { mockFile2.length } returns file2Content.length.toLong()
+        every { mockFile2.extension } returns "txt"
+
+        // Set up FileUtils to return different content for each file
+        every { FileUtils.getRelativePath(mockFile1, mockProject) } returns "path/to/file1.txt"
+        every { FileUtils.getRelativePath(mockFile2, mockProject) } returns "path/to/file2.txt"
+        every { FileUtils.readFileContent(mockFile1) } returns file1Content
+        every { FileUtils.readFileContent(mockFile2) } returns file2Content
+
+        // Set up gitignore parser
+        every { anyConstructed<HierarchicalGitignoreParser>().isIgnored(mockFile1) } returns false
+        every { anyConstructed<HierarchicalGitignoreParser>().isIgnored(mockFile2) } returns false
+
+        val files = arrayOf(mockFile1, mockFile2)
+
+        // Act
+        val result = sourceExporter.exportSources(files)
+
+        // Assert
+        // Check that the content contains both files' content
+        assertTrue(result.content.contains(file1Content), "Content should contain file1 content")
+        assertTrue(result.content.contains(file2Content), "Content should contain file2 content")
+
+        // Check that the content is not interleaved
+        // If content is interleaved, we would see patterns like "Line X of file 1" followed by "Line Y of file 2"
+        // We can check this by ensuring that all lines from file1 are contiguous and all lines from file2 are contiguous
+        val lines = result.content.lines()
+
+        // Find the start of file1 content
+        val file1Start = lines.indexOfFirst { it.contains("Line 0 of file 1") }
+        // Find the start of file2 content
+        val file2Start = lines.indexOfFirst { it.contains("Line 0 of file 2") }
+
+        // Both files should be found
+        assertTrue(file1Start >= 0, "File1 content should be found")
+        assertTrue(file2Start >= 0, "File2 content should be found")
+
+        // Check that all lines from file1 are contiguous
+        for (i in 1 until 100) {
+            val expectedLine = "Line $i of file 1"
+            val actualLine = lines[file1Start + i]
+            assertTrue(actualLine.contains(expectedLine), 
+                "Expected line $i of file1 to be at position ${file1Start + i}, but found: $actualLine")
+        }
+
+        // Check that all lines from file2 are contiguous
+        for (i in 1 until 100) {
+            val expectedLine = "Line $i of file 2"
+            val actualLine = lines[file2Start + i]
+            assertTrue(actualLine.contains(expectedLine), 
+                "Expected line $i of file2 to be at position ${file2Start + i}, but found: $actualLine")
+        }
+    }
 }
