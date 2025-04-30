@@ -1,60 +1,75 @@
-# Export Source to Clipboard IntelliJ Plugin
+# 📋🚀 Export Source to Clipboard – IntelliJ Plugin
 
-## Overview
+**Supercharge your code sharing and AI workflows directly from IntelliJ IDEA!**
 
-Export Source to Clipboard is an IntelliJ plugin designed to automate the inclusion of source code and its file path into your clipboard, thereby streamlining the process for analysis, sharing, and collaboration, especially with Large Language Models (LLMs). It enhances the workflow for developers and teams by providing a convenient bridge between your code and the latest AI technologies.
+The **Export Source to Clipboard** plugin transforms your coding environment into an AI-ready powerhouse by effortlessly packaging your source code and relevant file paths directly into your clipboard—ideal for instant collaboration and seamless integration with Large Language Models (LLMs).
 
-Including the file path with the source code often gives immediate context to the recipient or the processing tool. 
-This is particularly useful when sharing code snippets with team members or integrating with AI and LLMs, 
-as it clarifies where the code comes from within a project's directory structure. 
-It helps in understanding the purpose and scope of the code, especially in large projects with complex directory
-hierarchies and results in better LLM response accuracy and performance.
+---
+
+### 🎯 Why Use Export Source to Clipboard?
+
+Sharing precise code snippets along with their paths accelerates understanding and boosts productivity. This plugin ensures every snippet shared retains critical context, helping team members and AI tools quickly grasp the project structure and logic, dramatically improving LLM-driven analysis and responses.
 
 ![Export Source to Clipboard IntelliJ Plugin Demo](media/demo.gif)
 
-## Features
+---
 
-- **AI-Ready Sharing:** Prepare your code for analysis by AI and LLMs with seamless clipboard integration.
-- **Efficient Collaboration:** Quickly share code and its context with team members or AI tools to enhance your workflow.
-- **Automated Convenience:** Automatically append file paths (configurable) to clipboard content, saving time and reducing manual errors.
-- **Smart Directory Processing:** Converts entire directories into a shareable format, intelligently skipping binary files, ignored files/folders, and files exceeding size limits.
-- **Configurable Limits:** Set maximum number of files and maximum file size (KB) to process.
-- **Flexible Filtering:** Include only files matching specific extensions (e.g., `java`, `.kt`). Filters can be toggled on/off easily.
-- **Ignore List:** Define a list of file and directory names (like `.git`, `node_modules`) to always exclude.
-- **Informative Feedback:** Provides notifications on success, failure, limits reached, and a summary of processed/excluded files.
-- **IntelliJ Integration:** Uses standard IntelliJ progress indicators, notifications, and clipboard management.
+### ✨ Key Features
 
-## Use Case
+- **🚀 AI-Ready Sharing:** Instantly prepares your code snippets with context for smarter AI analysis.
+- **🤝 Seamless Collaboration:** Effortlessly share detailed, contextual code snippets with teammates or AI assistants.
+- **📂 Smart Directory Processing:** Automatically compiles entire directories into a clean, shareable format while intelligently skipping binaries, ignored files (e.g., `.gitignore`), and overly large files.
+- **🔢 Token Count Estimation:** Get instant feedback on estimated token usage, making it easier to stay within LLM limits.
+- **⚙️ Advanced Configuration:** Easily set custom limits for file count, size, ignored paths, and file types directly from IntelliJ's settings.
+- **🔔 Real-time Feedback:** Receive clear, intuitive notifications on export status, processed files, and any exclusions.
+- **🛠️ IntelliJ Integrated:** Seamlessly fits into your existing IntelliJ workflow using familiar interfaces and interactions.
 
-This plugin is an essential tool for developers and teams looking to leverage AI in their coding process, offering a convenient way to enhance productivity and focus on innovation throughout the software development lifecycle.
+---
 
-## Compatibility
+### 🧑‍💻 How to Get Started
 
-The plugin requires IntelliJ IDEA platform to function and is compatible with the IntelliJ Platform Plugin SDK (check `build.gradle.kts` and `plugin.xml` for specific versions).
+**1. Install the Plugin**
+- Navigate to: `Settings/Preferences` ➜ `Plugins` ➜ `Marketplace`
+- Search for "Export Source to Clipboard" and click install.
 
-## Installation
+**2. (Optional) Customize Your Settings**
+- Head over to: `Settings/Preferences` ➜ `Tools` ➜ `Export Source to Clipboard` and adjust to your workflow:
+    - Set file size and file count limits.
+    - Toggle file path prefixes.
+    - Manage file extensions and ignored patterns.
 
-You can install the Export Source to Clipboard plugin directly from the IntelliJ IDEA by navigating to the `Settings/Preferences` ➜ `Plugins` ➜ `Marketplace` and searching for "Export Source to Clipboard".
+**3. Export Your Source**
+- Right-click a file or directory in your Project View.
+- Choose "Export Source to Clipboard" and your snippet is ready!
 
-## Usage
+**4. Paste and Go!**
+- Simply paste your clipboard content into any AI tool, chat, or collaboration environment.
 
-1.  **(Optional) Configure Settings:** Go to `Settings/Preferences` ➜ `Tools` ➜ `Export Source to Clipboard` to adjust:
-    *   Maximum number of files.
-    *   Maximum file size (KB).
-    *   Whether to include the `// filename: path` prefix.
-    *   File extension filters (add/remove).
-    *   Ignored file/directory names.
-2.  **Export:** Right-click on any file or directory in the Project view.
-3.  **Select Action:** Choose "Export Source to Clipboard".
-4.  **(Optional) Toggle Filters:** Right-click and choose "Filters: enabled/disabled" to quickly toggle the extension filters without going into settings.
-5.  **Paste:** The content will be processed in the background and copied to your clipboard.
+---
 
-## Contributing
+### 🚧 What's New?
 
-We welcome contributions! If you're interested in improving the Export Source to Clipboard plugin or have suggestions, please feel free to fork the repository, make your changes, and submit a pull request.
+#### Version 1.6 – Powerful New Improvements
 
-## License
+- **📜 Gitignore Integration:** Automatically respects your `.gitignore` settings, providing clean and relevant exports.
+- **🧮 Token Count Insights:** Know exactly how much code you're exporting, helping you avoid LLM context overflow.
+- **🎚️ Enhanced Settings Interface:** Now easier than ever to customize export limits and exclusions, with intuitive validation and user-friendly feedback.
 
-This project is licensed under the MIT License. See the LICENSE file for more details.
+---
 
-Clipboard Icon provided by [janjf93](https://pixabay.com/vectors/flat-design-symbol-icon-www-2126883/) under the Pixabay License.
+### 🤝 Contribute
+
+Your insights and contributions help make this tool better! Fork, modify, and submit pull requests—we’re excited to see your ideas.
+
+---
+
+### 📜 License
+
+Distributed under the MIT License. See the [LICENSE](LICENSE) file for full details.
+
+Clipboard icon by [janjf93](https://pixabay.com/vectors/flat-design-symbol-icon-www-2126883/) (Pixabay License).
+
+---
+
+Made with ❤️ by [Antonio Agudo](https://www.antonioagudo.com)
+
