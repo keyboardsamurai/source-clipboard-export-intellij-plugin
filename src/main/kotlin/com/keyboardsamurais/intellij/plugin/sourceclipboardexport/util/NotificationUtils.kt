@@ -3,9 +3,7 @@ package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util
 import com.intellij.notification.Notification
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
-import com.intellij.notification.Notifications
 import com.intellij.openapi.project.Project
-import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.AppConstants
 import javax.swing.Timer
 
 object NotificationUtils {

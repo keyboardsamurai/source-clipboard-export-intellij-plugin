@@ -10,8 +10,23 @@ import com.intellij.util.ui.JBUI
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.ui.PlaceholderTextField
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.ui.TableButtonColumn
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.StringUtils
-import java.awt.*
-import javax.swing.*
+import java.awt.BorderLayout
+import java.awt.Dimension
+import java.awt.FlowLayout
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
+import java.awt.GridLayout
+import javax.swing.BorderFactory
+import javax.swing.JButton
+import javax.swing.JComponent
+import javax.swing.JLabel
+import javax.swing.JOptionPane
+import javax.swing.JPanel
+import javax.swing.JSpinner
+import javax.swing.JTextField
+import javax.swing.ListSelectionModel
+import javax.swing.SpinnerNumberModel
+import javax.swing.UIManager
 import javax.swing.table.DefaultTableModel
 
 class SourceClipboardExportConfigurable : Configurable {

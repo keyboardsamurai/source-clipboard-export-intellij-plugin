@@ -12,7 +12,6 @@ import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceClipboardExportSettings
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.SourceExporter
-import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.AppConstants
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.StringUtils
 import kotlinx.coroutines.runBlocking
