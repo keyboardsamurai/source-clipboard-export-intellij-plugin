@@ -3,14 +3,21 @@ package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceClipboardExportSettings
-import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.gitignore.GitignoreParser
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.gitignore.HierarchicalGitignoreParser
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.AppConstants
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.FileUtils
-import kotlinx.coroutines.*
-import java.util.Collections
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.min
 
@@ -31,9 +38,8 @@ class SourceExporter(
     private val excludedByGitignoreCount = AtomicInteger(0)
     private val excludedExtensions = Collections.synchronizedSet(mutableSetOf<String>())
 
-    // Store the single parser instance for the project root .gitignore
-    private var rootGitignoreParser: GitignoreParser? = null
-    private var gitignoreLoadAttempted = false
+    // Store the hierarchical gitignore parser instance
+    private val hierarchicalGitignoreParser = HierarchicalGitignoreParser(project)
 
     data class ExportResult(
         val content: String,
@@ -47,43 +53,13 @@ class SourceExporter(
         val limitReached: Boolean
     )
 
-    // Initialize parser in the constructor or an init block
-    init {
-        loadRootGitignoreParser()
-    }
-
-    private fun loadRootGitignoreParser() {
-        gitignoreLoadAttempted = true
-        val projectBasePath = project.basePath ?: run {
-            logger.warn("Project base path is null. Cannot locate .gitignore.")
-            return
-        }
-        // Look for .gitignore directly in the project root using VfsUtil
-        val gitignoreVirtualFile = VfsUtil.findRelativeFile(projectBasePath + "/.gitignore", null)
-
-        if (gitignoreVirtualFile != null && gitignoreVirtualFile.exists() && !gitignoreVirtualFile.isDirectory) {
-            try {
-                // Read content using VirtualFile API directly for simplicity here
-                val content = VfsUtil.loadText(gitignoreVirtualFile)
-                rootGitignoreParser = GitignoreParser(gitignoreVirtualFile) // Pass the VirtualFile
-                logger.info("Successfully loaded and parsed project root .gitignore: ${gitignoreVirtualFile.path}")
-            } catch (e: Exception) {
-                logger.warn("Failed to read or parse project root .gitignore: ${gitignoreVirtualFile.path}. Gitignore checks disabled.", e)
-                rootGitignoreParser = null
-            }
-        } else {
-            logger.info("Project root .gitignore not found or is invalid ($projectBasePath/.gitignore). Gitignore checks disabled.")
-            rootGitignoreParser = null
-        }
-    }
-
 
     suspend fun exportSources(selectedFiles: Array<VirtualFile>): ExportResult {
         logger.info("Starting source export process.")
         logger.info("Settings: Max Files=${settings.fileCount}, Max Size KB=${settings.maxFileSizeKb}, Filters Enabled=${settings.areFiltersEnabled}, Filters=${settings.filenameFilters.joinToString()}, Ignored=${settings.ignoredNames.joinToString()}, Include Prefix=${settings.includePathPrefix}")
 
-        // No need to clear caches if we are not using the hierarchical parser's cache
-        // GitignoreParser.clearCaches() // Remove this
+        // Clear the hierarchical parser's cache to ensure fresh .gitignore parsing
+        hierarchicalGitignoreParser.clearCache()
 
         indicator.isIndeterminate = false
         indicator.text = "Scanning files..."
@@ -155,11 +131,6 @@ class SourceExporter(
 
         // --- Logging for Gitignore Debugging ---
         logger.info("Processing entry: '${file.name}' | Relative Path: '$relativePath' | isDirectory: ${file.isDirectory}")
-        if (!gitignoreLoadAttempted) {
-            logger.warn("Root gitignore parser initialization was not attempted!")
-        } else if (rootGitignoreParser == null) {
-            logger.warn("Root gitignore parser is NULL. Cannot perform check for '$relativePath'.")
-        }
         // --- End Logging ---
 
 
@@ -172,25 +143,18 @@ class SourceExporter(
             return
         }
 
-        // 2. Gitignore Check (using the single root parser)
-        var isIgnoredByGit = false
-        if (relativePath != null && rootGitignoreParser != null) {
-            try {
-                // Use the single parser instance. It expects path relative to its own location (project root).
-                isIgnoredByGit = rootGitignoreParser!!.matches(relativePath, file.isDirectory)
-                if (isIgnoredByGit) {
-                    logger.info(">>> Gitignore Match: YES. Skipping '$relativePath' based on root .gitignore rules.")
-                    excludedByGitignoreCount.incrementAndGet()
-                    return // Skip this entry entirely
-                } else {
-                    logger.info(">>> Gitignore Match: NO. Proceeding with '$relativePath'.")
-                }
-            } catch (e: Exception) {
-                logger.warn(">>> Gitignore Check: ERROR checking status for '$relativePath'. File will be processed.", e)
+        // 2. Gitignore Check (using hierarchical parser)
+        try {
+            val isIgnoredByGit = hierarchicalGitignoreParser.isIgnored(file)
+            if (isIgnoredByGit) {
+                logger.info(">>> Gitignore Match: YES. Skipping '${file.path}' based on hierarchical .gitignore rules.")
+                excludedByGitignoreCount.incrementAndGet()
+                return // Skip this entry entirely
+            } else {
+                logger.info(">>> Gitignore Match: NO. Proceeding with '${file.path}'.")
             }
-        } else if (relativePath != null) {
-            // Log only if parser is null but path is valid
-            // logger.info(">>> Gitignore Check: SKIPPED (Parser not loaded). Proceeding with '$relativePath'.")
+        } catch (e: Exception) {
+            logger.warn(">>> Gitignore Check: ERROR checking status for '${file.path}'. File will be processed.", e)
         }
 
 

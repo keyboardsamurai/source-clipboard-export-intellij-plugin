@@ -13,6 +13,13 @@ repositories {
 
 dependencies {
     implementation("com.knuddels:jtokkit:1.1.0")
+
+    // Test dependencies
+    testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
+    testImplementation("org.junit.jupiter:junit-jupiter-params:5.10.2") // For parameterized tests
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit5:1.9.24")
+    testImplementation("io.mockk:mockk:1.13.10")
 }
 
 // Configure Gradle IntelliJ Plugin
@@ -31,6 +38,31 @@ tasks {
     }
     withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
         kotlinOptions.jvmTarget = "17"
+    }
+
+    // Configure test task to use JUnit 5
+    test {
+        useJUnitPlatform()
+        testLogging {
+            events("passed", "skipped", "failed")
+        }
+
+        // Increase heap size to avoid OutOfMemoryError
+        jvmArgs("-Xmx2g")
+
+        // Point to our custom logging.properties file
+        systemProperty("java.util.logging.config.file", "${project.projectDir}/src/test/resources/logging.properties")
+    }
+
+    // Task to run all tests
+    register("runAllTests") {
+        description = "Runs all tests in the project"
+        group = "verification"
+        dependsOn(test)
+
+        doLast {
+            println("All tests have been executed.")
+        }
     }
     patchPluginXml {
         sinceBuild.set("232")
