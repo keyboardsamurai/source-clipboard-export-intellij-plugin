@@ -42,6 +42,7 @@ class SourceClipboardExportConfigurable : Configurable {
     private var includePathPrefixCheckBox: JBCheckBox? = null
     private var includeDirectoryStructureCheckBox: JBCheckBox? = null
     private var includeFilesInStructureCheckBox: JBCheckBox? = null
+    private var includeRepositorySummaryCheckBox: JBCheckBox? = null
     private var outputFormatComboBox: JComboBox<String>? = null
 
     override fun createComponent(): JComponent? {
@@ -51,6 +52,7 @@ class SourceClipboardExportConfigurable : Configurable {
         addFileLimitsPanel(gbc)
         addPathPrefixToggle(gbc)
         addDirectoryStructureToggles(gbc)
+        addRepositorySummaryToggle(gbc)
         addOutputFormatDropdown(gbc)
         addFiltersPanel(gbc)
         addFiltersTable(gbc)
@@ -121,6 +123,13 @@ class SourceClipboardExportConfigurable : Configurable {
         structurePanel.add(includeFilesInStructureCheckBox)
 
         settingsPanel!!.add(structurePanel, gbc)
+        gbc.gridy++
+    }
+
+    private fun addRepositorySummaryToggle(gbc: GridBagConstraints) {
+        includeRepositorySummaryCheckBox = JBCheckBox("Include repository summary")
+        includeRepositorySummaryCheckBox!!.toolTipText = "If checked, a summary of repository statistics will be included at the beginning of the output."
+        settingsPanel!!.add(includeRepositorySummaryCheckBox, gbc)
         gbc.gridy++
     }
 
@@ -267,6 +276,7 @@ class SourceClipboardExportConfigurable : Configurable {
                includePathPrefixCheckBox!!.isSelected != settings.includePathPrefix ||
                includeDirectoryStructureCheckBox!!.isSelected != settings.includeDirectoryStructure ||
                includeFilesInStructureCheckBox!!.isSelected != settings.includeFilesInStructure ||
+               includeRepositorySummaryCheckBox!!.isSelected != settings.includeRepositorySummary ||
                currentFilters != settings.filenameFilters || // Direct list comparison
                currentIgnoredNames != settings.ignoredNames || // Direct list comparison
                currentOutputFormat != settings.outputFormat
@@ -281,6 +291,7 @@ class SourceClipboardExportConfigurable : Configurable {
         settings.includePathPrefix = includePathPrefixCheckBox!!.isSelected
         settings.includeDirectoryStructure = includeDirectoryStructureCheckBox!!.isSelected
         settings.includeFilesInStructure = includeFilesInStructureCheckBox!!.isSelected
+        settings.includeRepositorySummary = includeRepositorySummaryCheckBox!!.isSelected
 
         // Update output format from dropdown
         val selectedFormatIndex = outputFormatComboBox?.selectedIndex ?: 0
@@ -301,7 +312,8 @@ class SourceClipboardExportConfigurable : Configurable {
 
         LOGGER.debug("Applying settings: File count = ${settings.fileCount}, Max Size KB = ${settings.maxFileSizeKb}, " +
                 "Include Prefix = ${settings.includePathPrefix}, Include Directory Structure = ${settings.includeDirectoryStructure}, " +
-                "Include Files in Structure = ${settings.includeFilesInStructure}, Output Format = ${settings.outputFormat}, " +
+                "Include Files in Structure = ${settings.includeFilesInStructure}, Include Repository Summary = ${settings.includeRepositorySummary}, " +
+                "Output Format = ${settings.outputFormat}, " +
                 "Filters = ${settings.filenameFilters.joinToString()}, " +
                 "Ignored = ${settings.ignoredNames.joinToString()}")
     }
@@ -313,6 +325,7 @@ class SourceClipboardExportConfigurable : Configurable {
         includePathPrefixCheckBox!!.isSelected = settings.includePathPrefix
         includeDirectoryStructureCheckBox!!.isSelected = settings.includeDirectoryStructure
         includeFilesInStructureCheckBox!!.isSelected = settings.includeFilesInStructure
+        includeRepositorySummaryCheckBox!!.isSelected = settings.includeRepositorySummary
 
         // Set the output format dropdown
         val formatIndex = when (settings.outputFormat) {

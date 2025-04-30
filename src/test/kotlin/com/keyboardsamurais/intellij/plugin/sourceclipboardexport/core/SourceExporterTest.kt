@@ -12,6 +12,7 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.FileUtils
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
+import io.mockk.mockkClass
 import io.mockk.mockkConstructor
 import io.mockk.mockkObject
 import io.mockk.mockkStatic
@@ -543,6 +544,94 @@ class SourceExporterTest {
             val actualLine = lines[file2Start + i]
             assertTrue(actualLine.contains(expectedLine), 
                 "Expected line $i of file2 to be at position ${file2Start + i}, but found: $actualLine")
+        }
+    }
+
+    @Test
+    fun `exportSources includes repository summary when enabled`() = runBlocking {
+        // Arrange
+        every { mockSettings.includeRepositorySummary } returns true
+
+        // Mock the RepositorySummary class
+        mockkConstructor(RepositorySummary::class)
+
+        // Set up the mock to return a predefined summary for each format
+        val plainTextSummary = "Repository Info\nTotal Files: 1\n"
+        val markdownSummary = "# Repository Info\n## Total Files\n1 files\n"
+        val xmlSummary = "<repository-summary><total-files>1</total-files></repository-summary>"
+
+        // Return different summaries based on the output format
+        every { 
+            anyConstructed<RepositorySummary>().generateSummary(OutputFormat.PLAIN_TEXT) 
+        } returns plainTextSummary
+
+        every { 
+            anyConstructed<RepositorySummary>().generateSummary(OutputFormat.MARKDOWN) 
+        } returns markdownSummary
+
+        every { 
+            anyConstructed<RepositorySummary>().generateSummary(OutputFormat.XML) 
+        } returns xmlSummary
+
+        val files = arrayOf(mockFile)
+
+        // Test with PLAIN_TEXT format
+        every { mockSettings.outputFormat } returns OutputFormat.PLAIN_TEXT
+
+        // Act
+        val plainTextResult = sourceExporter.exportSources(files)
+
+        // Assert
+        assertTrue(plainTextResult.content.contains(plainTextSummary), 
+            "Content should contain repository summary in plain text format")
+
+        // Test with MARKDOWN format
+        every { mockSettings.outputFormat } returns OutputFormat.MARKDOWN
+
+        // Act
+        val markdownResult = sourceExporter.exportSources(files)
+
+        // Assert
+        assertTrue(markdownResult.content.contains(markdownSummary), 
+            "Content should contain repository summary in markdown format")
+
+        // Test with XML format
+        every { mockSettings.outputFormat } returns OutputFormat.XML
+
+        // Act
+        val xmlResult = sourceExporter.exportSources(files)
+
+        // Assert
+        assertTrue(xmlResult.content.contains(xmlSummary), 
+            "Content should contain repository summary in XML format")
+    }
+
+    @Test
+    fun `exportSources does not include repository summary when disabled`() = runBlocking {
+        // Arrange
+        every { mockSettings.includeRepositorySummary } returns false
+
+        // Mock the RepositorySummary class
+        mockkConstructor(RepositorySummary::class)
+
+        // Set up the mock to return a predefined summary
+        val plainTextSummary = "Repository Info\nTotal Files: 1\n"
+        every { 
+            anyConstructed<RepositorySummary>().generateSummary(any()) 
+        } returns plainTextSummary
+
+        val files = arrayOf(mockFile)
+
+        // Act
+        val result = sourceExporter.exportSources(files)
+
+        // Assert
+        assertFalse(result.content.contains(plainTextSummary), 
+            "Content should not contain repository summary when disabled")
+
+        // Verify that the RepositorySummary.generateSummary method was not called
+        verify(exactly = 0) { 
+            anyConstructed<RepositorySummary>().generateSummary(any())
         }
     }
 }
