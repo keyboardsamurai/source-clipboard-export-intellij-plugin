@@ -10,6 +10,85 @@ import kotlin.math.min
 object FileUtils {
     private val LOGGER = Logger.getInstance(FileUtils::class.java)
 
+    /**
+     * Generates a text-based tree representation of the directory structure for the given file paths.
+     * 
+     * @param filePaths List of file paths (relative to the repository root)
+     * @param includeFiles Whether to include files in the tree representation
+     * @return A formatted string representing the directory structure
+     */
+    fun generateDirectoryTree(filePaths: List<String>, includeFiles: Boolean): String {
+        if (filePaths.isEmpty()) return ""
+
+        // Build a tree structure from the file paths
+        val root = DirectoryNode("", isRoot = true)
+
+        for (path in filePaths) {
+            val parts = path.split('/')
+            var currentNode = root
+
+            // Process each part of the path
+            for (i in parts.indices) {
+                val part = parts[i]
+                val isFile = i == parts.lastIndex
+
+                // Skip files if not including them
+                if (isFile && !includeFiles) break
+
+                // Find or create child node
+                var childNode = currentNode.children.find { it.name == part }
+                if (childNode == null) {
+                    childNode = DirectoryNode(part, isFile = isFile)
+                    currentNode.children.add(childNode)
+                }
+                currentNode = childNode
+            }
+        }
+
+        // Generate the tree representation
+        val sb = StringBuilder()
+        sb.append("// Directory structure\n")
+        generateTreeString(root, sb, "", "")
+        sb.append("// End of directory structure")
+
+        return sb.toString()
+    }
+
+    /**
+     * Helper class to represent a node in the directory tree.
+     */
+    private class DirectoryNode(
+        val name: String,
+        val isFile: Boolean = false,
+        val isRoot: Boolean = false,
+        val children: MutableList<DirectoryNode> = mutableListOf()
+    )
+
+    /**
+     * Recursively generates the string representation of the tree.
+     */
+    private fun generateTreeString(node: DirectoryNode, sb: StringBuilder, prefix: String, childPrefix: String) {
+        if (!node.isRoot) {
+            sb.append("// ")
+            sb.append(prefix)
+            sb.append(node.name)
+            sb.append('\n')
+        }
+
+        // Sort children: directories first, then files, both alphabetically
+        val sortedChildren = node.children.sortedWith(compareBy<DirectoryNode> { it.isFile }.thenBy { it.name })
+
+        for (i in sortedChildren.indices) {
+            val child = sortedChildren[i]
+            val isLast = i == sortedChildren.lastIndex
+
+            val newPrefix = childPrefix + (if (isLast) "└── " else "├── ")
+            val newChildPrefix = childPrefix + (if (isLast) "    " else "│   ")
+
+            generateTreeString(child, sb, newPrefix, newChildPrefix)
+        }
+    }
+
     fun getRelativePath(file: VirtualFile, project: Project): String {
         val repositoryRoot = getRepositoryRoot(project)
         return repositoryRoot?.let { VfsUtil.getRelativePath(file, it, '/') } ?: file.name

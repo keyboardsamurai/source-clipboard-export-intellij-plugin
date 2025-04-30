@@ -38,6 +38,8 @@ class SourceClipboardExportConfigurable : Configurable {
     private var addFilterTextField: JTextField? = null
     private var ignoredNamesTextArea: JBTextArea? = null
     private var includePathPrefixCheckBox: JBCheckBox? = null
+    private var includeDirectoryStructureCheckBox: JBCheckBox? = null
+    private var includeFilesInStructureCheckBox: JBCheckBox? = null
 
     override fun createComponent(): JComponent? {
         settingsPanel = JPanel(GridBagLayout())
@@ -45,6 +47,7 @@ class SourceClipboardExportConfigurable : Configurable {
 
         addFileLimitsPanel(gbc)
         addPathPrefixToggle(gbc)
+        addDirectoryStructureToggles(gbc)
         addFiltersPanel(gbc)
         addFiltersTable(gbc)
         addIgnoredNamesPanel(gbc)
@@ -99,6 +102,21 @@ class SourceClipboardExportConfigurable : Configurable {
         includePathPrefixCheckBox = JBCheckBox("Include '// filename: path' prefix in output")
         includePathPrefixCheckBox!!.toolTipText = "If checked, each file's content will be preceded by a comment with its relative path."
         settingsPanel!!.add(includePathPrefixCheckBox, gbc)
+        gbc.gridy++
+    }
+
+    private fun addDirectoryStructureToggles(gbc: GridBagConstraints) {
+        val structurePanel = JPanel(GridLayout(2, 1, 0, 5))
+
+        includeDirectoryStructureCheckBox = JBCheckBox("Include directory structure")
+        includeDirectoryStructureCheckBox!!.toolTipText = "If checked, a text-based tree representation of the directory structure will be included at the beginning of the output."
+        structurePanel.add(includeDirectoryStructureCheckBox)
+
+        includeFilesInStructureCheckBox = JBCheckBox("Include files in directory structure")
+        includeFilesInStructureCheckBox!!.toolTipText = "If checked, files will be included in the directory structure tree. Only applies if 'Include directory structure' is enabled."
+        structurePanel.add(includeFilesInStructureCheckBox)
+
+        settingsPanel!!.add(structurePanel, gbc)
         gbc.gridy++
     }
 
@@ -217,6 +235,8 @@ class SourceClipboardExportConfigurable : Configurable {
         return fileCountSpinner!!.value != settings.fileCount ||
                maxFileSizeSpinner!!.value != settings.maxFileSizeKb ||
                includePathPrefixCheckBox!!.isSelected != settings.includePathPrefix ||
+               includeDirectoryStructureCheckBox!!.isSelected != settings.includeDirectoryStructure ||
+               includeFilesInStructureCheckBox!!.isSelected != settings.includeFilesInStructure ||
                currentFilters != settings.filenameFilters || // Direct list comparison
                currentIgnoredNames != settings.ignoredNames // Direct list comparison
     }
@@ -228,6 +248,8 @@ class SourceClipboardExportConfigurable : Configurable {
         settings.fileCount = fileCountSpinner!!.value as Int
         settings.maxFileSizeKb = maxFileSizeSpinner!!.value as Int
         settings.includePathPrefix = includePathPrefixCheckBox!!.isSelected
+        settings.includeDirectoryStructure = includeDirectoryStructureCheckBox!!.isSelected
+        settings.includeFilesInStructure = includeFilesInStructureCheckBox!!.isSelected
         settings.filenameFilters = (0 until filtersTableModel!!.rowCount).map {
             filtersTableModel!!.getValueAt(it, 0) as String
         }.toMutableList() // Create new list
@@ -236,7 +258,10 @@ class SourceClipboardExportConfigurable : Configurable {
             ?.filter { it.isNotEmpty() }
             ?.toMutableList() ?: mutableListOf() // Create new list
 
-        LOGGER.debug("Applying settings: File count = ${settings.fileCount}, Max Size KB = ${settings.maxFileSizeKb}, Include Prefix = ${settings.includePathPrefix}, Filters = ${settings.filenameFilters.joinToString()}, Ignored = ${settings.ignoredNames.joinToString()}")
+        LOGGER.debug("Applying settings: File count = ${settings.fileCount}, Max Size KB = ${settings.maxFileSizeKb}, " +
+                "Include Prefix = ${settings.includePathPrefix}, Include Directory Structure = ${settings.includeDirectoryStructure}, " +
+                "Include Files in Structure = ${settings.includeFilesInStructure}, Filters = ${settings.filenameFilters.joinToString()}, " +
+                "Ignored = ${settings.ignoredNames.joinToString()}")
     }
 
     override fun reset() {
@@ -244,6 +269,8 @@ class SourceClipboardExportConfigurable : Configurable {
         fileCountSpinner!!.value = settings.fileCount
         maxFileSizeSpinner!!.value = settings.maxFileSizeKb
         includePathPrefixCheckBox!!.isSelected = settings.includePathPrefix
+        includeDirectoryStructureCheckBox!!.isSelected = settings.includeDirectoryStructure
+        includeFilesInStructureCheckBox!!.isSelected = settings.includeFilesInStructure
 
         // Clear and repopulate table model
         filtersTableModel!!.rowCount = 0
@@ -253,7 +280,10 @@ class SourceClipboardExportConfigurable : Configurable {
 
         ignoredNamesTextArea!!.text = settings.ignoredNames.joinToString("\n")
 
-        LOGGER.debug("Resetting settings UI to: File count = ${settings.fileCount}, Max Size KB = ${settings.maxFileSizeKb}, Include Prefix = ${settings.includePathPrefix}, Filters = ${settings.filenameFilters.joinToString()}, Ignored = ${settings.ignoredNames.joinToString()}")
+        LOGGER.debug("Resetting settings UI to: File count = ${settings.fileCount}, Max Size KB = ${settings.maxFileSizeKb}, " +
+                "Include Prefix = ${settings.includePathPrefix}, Include Directory Structure = ${settings.includeDirectoryStructure}, " +
+                "Include Files in Structure = ${settings.includeFilesInStructure}, Filters = ${settings.filenameFilters.joinToString()}, " +
+                "Ignored = ${settings.ignoredNames.joinToString()}")
     }
 
     override fun getDisplayName(): String {

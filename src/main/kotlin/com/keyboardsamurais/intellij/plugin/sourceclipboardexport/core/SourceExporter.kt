@@ -81,7 +81,34 @@ class SourceExporter(
         val finalFileCount = fileCount.get()
         logger.info("Export process finished. Processed: $finalProcessedCount, Total Considered: $finalFileCount, Excluded (Filter: ${excludedByFilterCount.get()}, Size: ${excludedBySizeCount.get()}, Binary: ${excludedByBinaryContentCount.get()}, IgnoredName: ${excludedByIgnoredNameCount.get()}, Gitignore: ${excludedByGitignoreCount.get()})")
 
-        val finalContent = fileContents.joinToString("\n")
+        // Generate directory structure if enabled
+        val contentBuilder = StringBuilder()
+
+        if (settings.includeDirectoryStructure) {
+            // Extract relative paths from file contents (they are prefixed with "// filename: ")
+            val filePaths = mutableListOf<String>()
+            for (i in 0 until fileContents.size) {
+                val content = fileContents[i]
+                if (content.startsWith(AppConstants.FILENAME_PREFIX)) {
+                    // Extract the path from the first line (before the first newline)
+                    val firstLine = content.substringBefore('\n')
+                    val path = firstLine.substring(AppConstants.FILENAME_PREFIX.length).trim()
+                    filePaths.add(path)
+                }
+            }
+
+            // Generate and add the directory tree
+            val directoryTree = FileUtils.generateDirectoryTree(filePaths, settings.includeFilesInStructure)
+            if (directoryTree.isNotEmpty()) {
+                contentBuilder.append(directoryTree)
+                contentBuilder.append("\n\n")
+            }
+        }
+
+        // Add file contents
+        contentBuilder.append(fileContents.joinToString("\n"))
+
+        val finalContent = contentBuilder.toString()
         return ExportResult(
             content = finalContent,
             processedFileCount = finalProcessedCount,
@@ -277,11 +304,13 @@ class SourceExporter(
         synchronized(fileContents) {
             // Double-check limit within synchronized block
             if (fileCount.get() < settings.fileCount) {
-                if (settings.includePathPrefix) {
-                    // Use the passed relativePath
-                    fileContents.add("${AppConstants.FILENAME_PREFIX}$relativePath")
+                // Combine filename prefix and content into a single entry to prevent interleaving
+                val contentToAdd = if (settings.includePathPrefix) {
+                    "${AppConstants.FILENAME_PREFIX}$relativePath\n$fileContent"
+                } else {
+                    fileContent
                 }
-                fileContents.add(fileContent)
+                fileContents.add(contentToAdd)
 
                 val currentFileCount = fileCount.incrementAndGet()
                 val currentProcessedCount = processedFileCount.incrementAndGet()

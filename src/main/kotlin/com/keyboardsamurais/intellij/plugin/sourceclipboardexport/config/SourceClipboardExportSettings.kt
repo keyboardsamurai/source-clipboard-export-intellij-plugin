@@ -20,6 +20,8 @@ class SourceClipboardExportSettings : PersistentStateComponent<SourceClipboardEx
         var maxFileSizeKb: Int = 100
         var ignoredNames: MutableList<String> = AppConstants.DEFAULT_IGNORED_NAMES.toMutableList()
         var includePathPrefix: Boolean = true
+        var includeDirectoryStructure: Boolean = false
+        var includeFilesInStructure: Boolean = false
     }
 
     private var myState = State()
