@@ -19,7 +19,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.*
-import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.min
 
@@ -29,7 +29,9 @@ class SourceExporter(
     private val indicator: ProgressIndicator
 ) {
     private val logger = Logger.getInstance(SourceExporter::class.java)
-    private val fileContents = CopyOnWriteArrayList<String>()
+    // Use a thread-safe list for collecting results from multiple coroutines
+    // We'll use a more efficient approach with local buffers and merging at the end
+    private val fileContents = Collections.synchronizedList(mutableListOf<String>())
     // Use AtomicIntegers for thread-safe counting from multiple coroutines
     private val fileCount = AtomicInteger(0)
     private val processedFileCount = AtomicInteger(0)
@@ -67,17 +69,35 @@ class SourceExporter(
         indicator.isIndeterminate = false
         indicator.text = "Scanning files..."
 
+        // Use a map to store local buffers for each coroutine
+        val localBuffers = ConcurrentHashMap<Long, MutableList<String>>()
+
         coroutineScope {
             val scopeJob = SupervisorJob()
+            // Limit parallelism to avoid spawning too many coroutines
+            // This prevents excessive thread creation and context switching
+            val limitedDispatcher = Dispatchers.IO.limitedParallelism(16) // Reasonable limit for most systems
+
             selectedFiles.forEach { file ->
-                launch(scopeJob + Dispatchers.IO) {
+                launch(scopeJob + limitedDispatcher) {
                     ensureActive()
-                    processEntry(file, this)
+                    // Create a local buffer for this coroutine
+                    val localBuffer = mutableListOf<String>()
+                    // Store the buffer in the map using the coroutine ID as the key
+                    localBuffers[Thread.currentThread().id] = localBuffer
+                    // Process the file with the local buffer
+                    processEntry(file, this, localBuffer)
                 }
             }
             scopeJob.children.forEach { it.join() }
             scopeJob.complete()
             scopeJob.join()
+        }
+
+        // Merge all local buffers into the shared list
+        fileContents.clear()
+        localBuffers.values.forEach { buffer ->
+            fileContents.addAll(buffer)
         }
 
         val finalProcessedCount = processedFileCount.get()
@@ -208,8 +228,9 @@ class SourceExporter(
      *
      * @param file The VirtualFile to process.
      * @param scope The CoroutineScope for cooperative cancellation.
+     * @param localBuffer The local buffer to add file contents to.
      */
-    private suspend fun processEntry(file: VirtualFile, scope: CoroutineScope) {
+    private suspend fun processEntry(file: VirtualFile, scope: CoroutineScope, localBuffer: MutableList<String>) {
         scope.ensureActive() // Check cancellation at the start
 
         // --- Basic Checks ---
@@ -280,18 +301,22 @@ class SourceExporter(
         if (file.isDirectory) {
             // Process directory contents recursively
             logger.debug("Processing directory contents: ${file.path}")
-            processDirectoryChildren(file, scope)
+            processDirectoryChildren(file, scope, localBuffer)
         } else {
             // Process a single file (pass the already calculated relative path)
             logger.debug("Processing file: ${file.path}")
-            processSingleFile(file, relativePath ?: file.name, scope) // Pass relative path or fallback
+            processSingleFile(file, relativePath ?: file.name, scope, localBuffer) // Pass relative path or fallback
         }
     }
 
     /**
      * Iterates over directory children and calls processEntry for each.
+     * 
+     * @param directory The directory to process.
+     * @param scope The coroutine scope.
+     * @param localBuffer The local buffer to add file contents to.
      */
-    private suspend fun processDirectoryChildren(directory: VirtualFile, scope: CoroutineScope) {
+    private suspend fun processDirectoryChildren(directory: VirtualFile, scope: CoroutineScope, localBuffer: MutableList<String>) {
         try {
             val children = directory.children ?: return // No children or error reading them
             for (child in children) {
@@ -304,7 +329,7 @@ class SourceExporter(
                 }
 
                 // Recursively process children - processEntry will handle all checks for the child
-                processEntry(child, scope)
+                processEntry(child, scope, localBuffer)
 
                 // Check cancellation after processing each child
                 scope.ensureActive()
@@ -323,8 +348,9 @@ class SourceExporter(
      * @param file The file VirtualFile.
      * @param relativePath The pre-calculated relative path (or fallback).
      * @param scope The coroutine scope.
+     * @param localBuffer The local buffer to add file contents to.
      */
-    private suspend fun processSingleFile(file: VirtualFile, relativePath: String, scope: CoroutineScope) {
+    private suspend fun processSingleFile(file: VirtualFile, relativePath: String, scope: CoroutineScope, localBuffer: MutableList<String>) {
         // Note: .gitignore and ignoredNames checks are done in processEntry
 
         scope.ensureActive() // Check cancellation
@@ -393,55 +419,56 @@ class SourceExporter(
             return
         }
 
-        // --- Add to Results (Synchronized) ---
+        // --- Add to Results (Using Local Buffer) ---
         var limitReachedAfterAdd = false
-        synchronized(fileContents) {
-            // Double-check limit within synchronized block
-            if (fileCount.get() < settings.fileCount) {
-                // Combine filename prefix and content into a single entry to prevent interleaving
-                val contentToAdd = if (settings.includePathPrefix) {
-                    // Check if the file content already starts with any filename prefix
-                    if (FileUtils.hasFilenamePrefix(fileContent)) {
-                        fileContent
-                    } else {
-                        // Get the appropriate comment prefix for this file type
-                        val commentPrefix = FileUtils.getCommentPrefix(file)
-                        // For HTML-style comments, insert the path before the closing tag
-                        val formattedPrefix = if (commentPrefix.endsWith("-->")) {
-                            commentPrefix.replace("-->", "$relativePath -->")
-                        } else {
-                            "$commentPrefix$relativePath"
-                        }
-                        "$formattedPrefix\n$fileContent"
-                    }
-                } else {
+
+        // Double-check limit before adding to local buffer
+        if (fileCount.get() < settings.fileCount) {
+            // Combine filename prefix and content into a single entry to prevent interleaving
+            val contentToAdd = if (settings.includePathPrefix) {
+                // Check if the file content already starts with any filename prefix
+                if (FileUtils.hasFilenamePrefix(fileContent)) {
                     fileContent
-                }
-                fileContents.add(contentToAdd)
-
-                val currentFileCount = fileCount.incrementAndGet()
-                val currentProcessedCount = processedFileCount.incrementAndGet()
-
-                logger.info("Added file content ($currentProcessedCount/$currentFileCount): $relativePath")
-
-                // Update progress indicator
-                indicator.checkCanceled() // Use checkCanceled() instead of !isCanceled
-                val targetCount = settings.fileCount.toDouble()
-                if (targetCount > 0) {
-                    indicator.fraction = min(1.0, currentFileCount.toDouble() / targetCount)
-                }
-                indicator.text = "Processed $currentProcessedCount files..."
-
-                // Check if limit is now reached *after* adding
-                if (currentFileCount >= settings.fileCount) {
-                    logger.info("File count limit (${settings.fileCount}) reached after adding $relativePath.")
-                    limitReachedAfterAdd = true
+                } else {
+                    // Get the appropriate comment prefix for this file type
+                    val commentPrefix = FileUtils.getCommentPrefix(file)
+                    // For HTML-style comments, insert the path before the closing tag
+                    val formattedPrefix = if (commentPrefix.endsWith("-->")) {
+                        commentPrefix.replace("-->", "$relativePath -->")
+                    } else {
+                        "$commentPrefix$relativePath"
+                    }
+                    "$formattedPrefix\n$fileContent"
                 }
             } else {
-                logger.warn("File limit reached just before adding file in synchronized block: $relativePath")
+                fileContent
+            }
+
+            // Add to local buffer - no synchronization needed
+            localBuffer.add(contentToAdd)
+
+            val currentFileCount = fileCount.incrementAndGet()
+            val currentProcessedCount = processedFileCount.incrementAndGet()
+
+            logger.info("Added file content ($currentProcessedCount/$currentFileCount): $relativePath")
+
+            // Update progress indicator
+            indicator.checkCanceled() // Use checkCanceled() instead of !isCanceled
+            val targetCount = settings.fileCount.toDouble()
+            if (targetCount > 0) {
+                indicator.fraction = min(1.0, currentFileCount.toDouble() / targetCount)
+            }
+            indicator.text = "Processed $currentProcessedCount files..."
+
+            // Check if limit is now reached *after* adding
+            if (currentFileCount >= settings.fileCount) {
+                logger.info("File count limit (${settings.fileCount}) reached after adding $relativePath.")
                 limitReachedAfterAdd = true
             }
-        } // End synchronized block
+        } else {
+            logger.warn("File limit reached just before adding file: $relativePath")
+            limitReachedAfterAdd = true
+        }
 
         // If limit was reached, cancel the coroutine scope
         if (limitReachedAfterAdd && scope.isActive) {
