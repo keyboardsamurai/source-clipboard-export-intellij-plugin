@@ -59,38 +59,69 @@ class GitignoreParser(val gitignoreFile: VirtualFile) {
      * @param isDir Whether the path represents a directory.
      * @return `true` if the path should be ignored, `false` otherwise.
      */
-    fun matches(relativePath: String, isDir: Boolean): Boolean {
+    fun matches(relativePath: String, isDir: Boolean): Boolean =
+        when (matchResult(relativePath, isDir)) {
+            MatchResult.MATCH_IGNORE -> true
+            // Keep legacy behavior for NO_MATCH and MATCH_NEGATE
+            MatchResult.MATCH_NEGATE -> false
+            MatchResult.NO_MATCH     -> false
+        }
+
+    /**
+     * Checks if a given relative path matches any rule and returns the detailed result.
+     * The last matching rule (first in the reversed list) determines the outcome.
+     *
+     * @param relativePath The path relative to the directory containing the .gitignore file.
+     *                     Should use '/' as separator. Leading '/' is optional.
+     * @param isDir Whether the path represents a directory.
+     * @return MatchResult indicating the outcome (MATCH_IGNORE, MATCH_NEGATE, or NO_MATCH).
+     */
+    fun matchResult(relativePath: String, isDir: Boolean): MatchResult {
         // Normalize: remove leading slash, ensure / separators
         val normalizedPath = relativePath.removePrefix("/").replace('\\', '/')
         if (normalizedPath.isEmpty()) {
-            LOG.trace("Path is empty, returning false")
-            return false
+            LOG.trace("Path is empty, returning NO_MATCH")
+            return MatchResult.NO_MATCH
         }
 
-        // Iterate rules in reverse order (last rule first). <<<< LOGIC CHANGED HERE <<<<
+        if (LOG.isTraceEnabled) {
+            LOG.trace("Checking path='$normalizedPath', isDir=$isDir against ${rules.size} rules")
+        }
+
+
+        // Iterate rules in reverse order (last rule first).
         // The first rule that matches determines the outcome.
         for (r in rules) { // Iterating the reversed list
+            if (LOG.isTraceEnabled) {
+                LOG.trace("Checking rule '${r.original}'")
+            }
+
             val result = r.matches(normalizedPath, isDir)
+
+            if (LOG.isTraceEnabled) {
+                LOG.trace("Rule '${r.original}' result: $result")
+            }
+
             if (result != MatchResult.NO_MATCH) {
                 // First match found (due to reversed list) determines the fate.
-                val decision = result == MatchResult.MATCH_IGNORE
                 if (LOG.isTraceEnabled) {
-                    LOG.trace("Path='$normalizedPath', isDir=$isDir -> Matched rule '${r.original}' -> Result=$result -> Decision=$decision")
+                    LOG.trace("Path='$normalizedPath', isDir=$isDir -> Matched rule '${r.original}' -> Result=$result")
                 }
-                return decision // Return immediately on first match
+                return result // Return the actual MatchResult immediately
             }
         }
 
         // No rule matched.
         if (LOG.isTraceEnabled) {
-            LOG.trace("Path='$normalizedPath', isDir=$isDir -> No matching rule found -> Decision=false")
+            LOG.trace("Path='$normalizedPath', isDir=$isDir -> No matching rule found -> Result=NO_MATCH")
         }
-        return false // Default to not ignored if no rule matches
+        return MatchResult.NO_MATCH // Default to NO_MATCH if no rule matches
     }
 
     /* ── helpers ────────────────────────────────────────────────────────── */
 
-    internal enum class MatchResult { NO_MATCH, MATCH_IGNORE, MATCH_NEGATE }
+    // Changed from internal to public to be returned by public function
+    public enum class MatchResult { NO_MATCH, MATCH_IGNORE, MATCH_NEGATE }
 
     // Make IgnoreRule an inner class to access gitignoreFilePath easily if needed, or pass it
     internal class IgnoreRule(val original: String, private val gitignoreFilePath: String) {
@@ -140,14 +171,7 @@ class GitignoreParser(val gitignoreFile: VirtualFile) {
                     // Rule 'dir/' (pattern 'dir', dirOnly=true) -> glob '**/dir/**'
                     // Rule 'foo/bar/' (pattern 'foo/bar', dirOnly=true) -> glob 'foo/bar/**'
                     // Rule '**/build/' (pattern '**/build', dirOnly=true) -> glob '**/build/**'
-                    if (dirOnly) {
-                        // Append /** to match contents, unless the pattern already ends with **
-                        if (!pattern.endsWith("/**")) {
-                             append("/**")
-                        }
-                    }
-                    // If not dirOnly but pattern doesn't end with a wildcard, append /** to match files inside
-                    else if (!pattern.endsWith("*") && !pattern.endsWith("**")) {
+                    if (dirOnly && !pattern.endsWith("/**")) {
                         append("/**")
                     }
                 }
