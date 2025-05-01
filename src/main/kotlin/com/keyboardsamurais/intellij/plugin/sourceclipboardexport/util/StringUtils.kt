@@ -5,19 +5,17 @@ import com.knuddels.jtokkit.api.EncodingType
 
 object StringUtils {
 
+    // Cache the encoding registry and encoding to avoid recreating them for each call
+    private val registry by lazy { Encodings.newDefaultEncodingRegistry() }
+    private val encoding by lazy { registry.getEncoding(EncodingType.CL100K_BASE) }
+
     /**
      * Estimates token count using the jtokkit library with the CL100K_BASE encoding (used by GPT-3.5-Turbo and GPT-4).
      */
     fun estimateTokensWithSubwordHeuristic(text: String): Int {
         if (text.isEmpty()) return 0
 
-        // Get the encoding registry
-        val registry = Encodings.newDefaultEncodingRegistry()
-
-        // Get the encoding for CL100K_BASE (used by GPT-3.5-Turbo and GPT-4)
-        val encoding = registry.getEncoding(EncodingType.CL100K_BASE)
-
-        // Encode the text and count the tokens
+        // Encode the text and count the tokens using the cached encoding
         return encoding.countTokens(text)
     }
 
