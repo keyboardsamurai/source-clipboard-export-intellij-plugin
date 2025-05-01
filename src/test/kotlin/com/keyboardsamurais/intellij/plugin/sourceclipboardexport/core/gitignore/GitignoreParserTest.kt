@@ -9,7 +9,6 @@ import io.mockk.unmockkAll
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -31,28 +30,28 @@ class GitignoreParserTest {
         @JvmStatic
         fun providePatternMatchingTestCases(): Stream<Arguments> {
             return Stream.of(
-                // Basic patterns - adjusted expectations based on actual behavior
-                Arguments.of("*.txt", "file.txt", false, false, "Simple wildcard pattern"),
+                // Basic patterns
+                Arguments.of("*.txt", "file.txt", false, true,  "Simple wildcard pattern"),
                 Arguments.of("*.txt", "file.jpg", false, false, "Non-matching extension"),
-                Arguments.of("*.txt", "path/to/file.txt", false, true, "Wildcard pattern in subdirectory"),
+                Arguments.of("*.txt", "path/to/file.txt", false, true,  "Wildcard pattern in subdirectory"),
 
-                // Directory patterns - adjusted expectations based on actual behavior
-                Arguments.of("dir/", "dir", true, false, "Directory pattern matching directory"),
+                // Directory patterns
+                Arguments.of("dir/", "dir", true, true,  "Directory pattern matching directory"),
                 Arguments.of("dir/", "dir", false, false, "Directory pattern not matching file"),
-                Arguments.of("dir/", "dir/file.txt", false, false, "Directory pattern matching file in directory"),
+                Arguments.of("dir/", "dir/file.txt", false, true,  "Directory pattern matching file in directory"),
 
-                // Negation patterns - adjusted expectations based on actual behavior
-                Arguments.of("*.log", "debug.log", false, false, "Pattern matches log file"),
+                // Negation patterns
+                Arguments.of("*.log", "debug.log", false, true,  "Pattern matches log file"),
                 Arguments.of("!debug.log", "debug.log", false, false, "Negated pattern excludes specific log file"),
 
                 // Root anchoring
                 Arguments.of("/root.txt", "root.txt", false, true, "Root anchored pattern matches at root"),
                 Arguments.of("/root.txt", "subdir/root.txt", false, false, "Root anchored pattern doesn't match in subdirectory"),
 
-                // Complex patterns - adjusted expectations based on actual behavior
+                // Complex patterns
                 Arguments.of("**/build/", "project/build", true, true, "Recursive directory pattern"),
-                Arguments.of("**/build/", "project/build/output.txt", false, false, "Recursive directory pattern matches files inside"),
-                Arguments.of("doc/**/*.pdf", "doc/manual.pdf", false, false, "Complex pattern with directory and extension"),
+                Arguments.of("**/build/", "project/build/output.txt", false, true, "Recursive directory pattern matches files inside"),
+                Arguments.of("doc/**/*.pdf", "doc/manual.pdf", false, true, "Complex pattern with directory and extension"),
                 Arguments.of("doc/**/*.pdf", "doc/guides/user/manual.pdf", false, true, "Complex pattern with nested directories")
             )
         }
@@ -79,15 +78,12 @@ class GitignoreParserTest {
     }
 
     @Test
-    fun `constructor throws exception when gitignore file has no parent`() {
+    fun `constructor allows gitignore without parent`() {
         // Arrange
         every { mockGitignoreFile.parent } returns null
 
         // Act & Assert
-        val exception = assertThrows(IllegalArgumentException::class.java) {
-            GitignoreParser(mockGitignoreFile)
-        }
-        assertTrue(exception.message?.contains("must have a parent directory") == true)
+        GitignoreParser(mockGitignoreFile) // should NOT throw
     }
 
     @Test
@@ -143,6 +139,12 @@ class GitignoreParserTest {
         rulesField.isAccessible = true
         val rules = rulesField.get(gitignoreParser) as List<*>
         assertEquals(1, rules.size, "Rules list should have one rule for the escaped comment")
+        // Check the actual pattern of the single rule (which is the first line due to reversal)
+        val rule = rules[0]
+        val ruleClass = rule!!.javaClass
+        val patternField = ruleClass.getDeclaredField("pattern")
+        patternField.isAccessible = true
+        assertEquals("# This is not a comment", patternField.get(rule), "Pattern should be the unescaped comment line")
     }
 
     @Test
@@ -193,9 +195,7 @@ class GitignoreParserTest {
         val result = gitignoreParser.matches("debug.log", false)
 
         // Assert
-        // Based on the actual behavior of GitignoreParser, it appears that the implementation
-        // doesn't match log files with the pattern *.log, so the test expectation needs to be adjusted
-        assertFalse(result, "Based on the actual implementation behavior, debug.log is not matched by any rule")
+        assertTrue(result,  "Last matching rule (debug.log) wins -> file is ignored")
     }
 
     @Test
@@ -224,10 +224,11 @@ class GitignoreParserTest {
         rulesField.isAccessible = true
         val rules = rulesField.get(gitignoreParser) as List<*>
 
+        assertEquals(1, rules.size) // Ensure only one rule
         val rule = rules[0]
         val ruleClass = rule!!.javaClass
 
-        val isNegatedField = ruleClass.getDeclaredField("isNegated")
+        val isNegatedField = ruleClass.getDeclaredField("negated")
         isNegatedField.isAccessible = true
         assertTrue(isNegatedField.getBoolean(rule), "Rule should be negated")
 
@@ -248,10 +249,11 @@ class GitignoreParserTest {
         rulesField.isAccessible = true
         val rules = rulesField.get(gitignoreParser) as List<*>
 
+        assertEquals(1, rules.size) // Ensure only one rule
         val rule = rules[0]
         val ruleClass = rule!!.javaClass
 
-        val matchOnlyDirField = ruleClass.getDeclaredField("matchOnlyDir")
+        val matchOnlyDirField = ruleClass.getDeclaredField("dirOnly")
         matchOnlyDirField.isAccessible = true
         assertTrue(matchOnlyDirField.getBoolean(rule), "Rule should match only directories")
 
@@ -272,10 +274,11 @@ class GitignoreParserTest {
         rulesField.isAccessible = true
         val rules = rulesField.get(gitignoreParser) as List<*>
 
+        assertEquals(1, rules.size) // Ensure only one rule
         val rule = rules[0]
         val ruleClass = rule!!.javaClass
 
-        val isRootedField = ruleClass.getDeclaredField("isRooted")
+        val isRootedField = ruleClass.getDeclaredField("rooted")
         isRootedField.isAccessible = true
         assertTrue(isRootedField.getBoolean(rule), "Rule should be rooted")
 
@@ -301,19 +304,27 @@ class GitignoreParserTest {
 
         assertEquals(2, rules.size, "Should have two rules")
 
-        // Check first rule (escaped #)
-        val rule1 = rules[0]
-        val ruleClass = rule1!!.javaClass
-        val patternField = ruleClass.getDeclaredField("pattern")
-        patternField.isAccessible = true
-        assertEquals("#not-a-comment.txt", patternField.get(rule1), "Pattern should have # without escape character")
+        // Rule order is reversed in parser init!
+        // rules[0] corresponds to the LAST line: \!not-negated.txt
+        // rules[1] corresponds to the FIRST line: \#not-a-comment.txt
 
-        // Check second rule (escaped !)
-        val rule2 = rules[1]
-        val isNegatedField = ruleClass.getDeclaredField("isNegated")
-        isNegatedField.isAccessible = true
-        assertFalse(isNegatedField.getBoolean(rule2), "Rule should not be negated despite having !")
-        patternField.isAccessible = true
-        assertEquals("!not-negated.txt", patternField.get(rule2), "Pattern should have ! without escape character")
+        // Check first rule (escaped #) - Now at index 1
+        val rule1 = rules[1] // <<<< Index adjusted
+        val ruleClass1 = rule1!!.javaClass // Use the class from rule1
+        val patternField1 = ruleClass1.getDeclaredField("pattern")
+        patternField1.isAccessible = true
+        // Corrected expected value after unescaping
+        assertEquals("#not-a-comment.txt", patternField1.get(rule1), "Pattern should have # without escape character")
+
+        // Check second rule (escaped !) - Now at index 0
+        val rule2 = rules[0] // <<<< Index adjusted
+        val ruleClass2 = rule2!!.javaClass // Use the class from rule2
+        val isNegatedField2 = ruleClass2.getDeclaredField("negated")
+        isNegatedField2.isAccessible = true
+        assertFalse(isNegatedField2.getBoolean(rule2), "Rule should not be negated despite having !")
+        val patternField2 = ruleClass2.getDeclaredField("pattern")
+        patternField2.isAccessible = true
+        // Corrected expected value after unescaping
+        assertEquals("!not-negated.txt", patternField2.get(rule2), "Pattern should have ! without escape character")
     }
 }
