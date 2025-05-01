@@ -157,9 +157,10 @@ class GitignoreParser(val gitignoreFile: VirtualFile) {
                     LOG.trace("Rule '$original' -> Glob: '$fullGlob'")
                     FS.getPathMatcher(fullGlob)
                 } catch (e: PatternSyntaxException) {
+                    // Log matcher creation errors as WARN - indicates bad rule/pattern
                     LOG.warn("Invalid glob pattern '$globPattern' generated from rule '$original' in $gitignoreFilePath", e)
-                    null // Handle invalid patterns gracefully
-                } catch (e: Exception) { // Catch other potential exceptions
+                    null
+                } catch (e: Exception) {
                     LOG.warn("Error creating PathMatcher for glob '$globPattern' (rule '$original') in $gitignoreFilePath", e)
                     null
                 }
@@ -195,10 +196,11 @@ class GitignoreParser(val gitignoreFile: VirtualFile) {
             val pathObj : Path = try {
                  FS.getPath(normalizedPath)
             } catch (e: InvalidPathException) {
+                // Log runtime path errors as DEBUG - might happen with unusual filenames
                 LOG.debug("Rule '$original': Invalid path syntax: $normalizedPath", e)
                 return MatchResult.NO_MATCH
             } catch (e: Exception) {
-                 LOG.warn("Rule '$original': Error creating Path object for: $normalizedPath", e)
+                 LOG.debug("Rule '$original': Error creating Path object for: $normalizedPath", e)
                  return MatchResult.NO_MATCH
             }
 
@@ -245,7 +247,8 @@ class GitignoreParser(val gitignoreFile: VirtualFile) {
                          if (LOG.isTraceEnabled) LOG.trace("Rule '$original': PathMatcher glob '${matcher}' FAILED for '$normalizedPath'")
                     }
                 } catch (e: Exception) {
-                    LOG.warn("Rule '$original': Error during PathMatcher.matches for path '$normalizedPath'", e)
+                    // Log runtime matching errors as DEBUG
+                    LOG.debug("Rule '$original': Error during PathMatcher.matches for path '$normalizedPath'", e)
                     // hit remains false
                 }
 
@@ -258,13 +261,15 @@ class GitignoreParser(val gitignoreFile: VirtualFile) {
                             val regexHit = fileRegex.matches(name)
                             if (regexHit) {
                                 hit = true
+                                // If matcher also exists, prefer GLOB source? No, REGEX is more specific here.
                                 matchedBy = MatchSource.REGEX
                                 if (LOG.isTraceEnabled) LOG.trace("Rule '$original': fileRegex '$fileRegex' SUCCESS for filename '$name' (path '$normalizedPath')")
                             } else {
                                 if (LOG.isTraceEnabled) LOG.trace("Rule '$original': fileRegex '$fileRegex' FAILED for filename '$name' (path '$normalizedPath')")
                             }
                          } catch (e: Exception) {
-                             LOG.warn("Rule '$original': Error during fileRegex.matches for name '$name'", e)
+                             // Log runtime matching errors as DEBUG
+                             LOG.debug("Rule '$original': Error during fileRegex.matches for name '$name'", e)
                          }
                     } else {
                          if (LOG.isTraceEnabled) LOG.trace("Rule '$original': fileRegex fallback skipped for path '$normalizedPath' (no filename)")
@@ -278,11 +283,12 @@ class GitignoreParser(val gitignoreFile: VirtualFile) {
                      try {
                          if (fileRegex.matches(name)) {
                              hit = true
+                             // If matcher also exists, prefer GLOB source? No, REGEX is more specific here.
                              matchedBy = MatchSource.REGEX
                              if (LOG.isTraceEnabled) LOG.trace("Rule '$original': fileRegex (no matcher) SUCCESS for filename '$name'")
                          }
                      } catch (e: Exception) {
-                          LOG.warn("Rule '$original': Error during fileRegex.matches (no matcher) for name '$name'", e)
+                          LOG.debug("Rule '$original': Error during fileRegex.matches (no matcher) for name '$name'", e)
                      }
                  }
             }
