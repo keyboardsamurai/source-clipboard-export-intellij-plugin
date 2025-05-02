@@ -23,13 +23,13 @@
     It helps in understanding the purpose and scope of the code, especially in large projects with complex directory
     hierarchies and results in better LLM response accuracy and performance.
 
-    <ul>
-        <li><b>AI-Ready Sharing:</b> Prepare your code for analysis by AI and LLMs with seamless clipboard integration.</li>
-        <li><b>Efficient Collaboration:</b> Enhance your workflow by quickly sharing code and its context with team members or AI tools.</li>
-        <li><b>Automated Convenience:</b> Automatically append file paths to clipboard content, saving time and reducing manual errors.</li>
-        <li><b>Smart Directory Processing:</b> Automatically processes entire directories, converting code files and their paths into a shareable format, while intelligently skipping binary files to focus on relevant source code.</li>
-        <li><b>Limit-Conscious Operation:</b> Designed to manage large data loads efficiently, the plugin caps processing at 50 files to maintain performance and prevent overload.</li>
-    </ul>
+<ul>
+    <li><b>🚀 AI-Optimized Sharing:</b> Effortlessly prepare detailed, context-rich code snippets for immediate AI analysis.</li>
+    <li><b>🤝 Enhanced Collaboration:</b> Instantly share complete and accurate code context with team members and AI assistants.</li>
+    <li><b>📋 Automated Efficiency:</b> Automatically attach file paths to clipboard content, eliminating manual errors and speeding up workflow.</li>
+    <li><b>📂 Intelligent Directory Handling:</b> Quickly export entire directories into an AI-friendly format while smartly skipping irrelevant files like binaries and large files, optimizing your workflow.</li>
+    <li><b>🔢 Optimized Performance:</b> Efficiently manage large data exports with built-in file limit controls, maintaining optimal plugin performance.</li>
+</ul>
 
     Export Source to Clipboard is designed for developers and teams looking to leverage AI in their coding process,
     offering a convenient bridge between your code and the latest AI technologies for analysis and improvement.
@@ -39,22 +39,24 @@
 ]]></description>
 
     <change-notes><![CDATA[
-        <h3>Version 1.7 - New Features & Improvements</h3>
+        <h3>Version 1.7 – Enhanced Stack Traces & Gitignore Magic ✨</h3>
         <ul>
-            <li>Token Count improvement: Token count is now based on GPT-4, calculated by the awesome <a href="https://github.com/knuddelsgmbh/jtokkit">Jtokkit library</a></li>
-        </ul>
-        <h3>Version 1.6</h3>
-        <ul>
-            <li><b>Gitignore Support:</b> The plugin now respects rules defined in your project's <code>.gitignore</code> files, automatically excluding matching files and directories from the export. The UI shows a count of files excluded by these rules.</li>
-            <li><b>Token Count Estimation:</b> Implemented token count estimation for exported code (useful for managing LLM context limits).</li>
-            <li><b>Enhanced Configuration Options (Settings/Preferences):</b>
+            <li><b>📌 Stack Trace Folding:</b> Introduced intelligent stack trace folding in console views. Library frames are neatly collapsed, highlighting your project code clearly:
                 <ul>
-                    <li>Added a setting to configure a maximum file size limit (in KB) for exported files.</li>
-                    <li>Added a setting to specify custom paths or patterns (like <code>.git</code>, <code>node_modules</code>) to always ignore during export.</li>
-                    <li>Added a setting to toggle the inclusion of file path prefixes in the exported content.</li>
-                    <li>Improved the settings UI with better validation and feedback.</li>
+                    <li>Special handling ensures critical contexts like Spring test frames remain fully visible.</li>
+                    <li>Improved readability with consistent indentation for folded frames.</li>
+                    <li>Quickly copy neatly folded stack traces directly from the IntelliJ console.</li>
                 </ul>
             </li>
+            <li><b>🧙 Gitignore Mastery:</b> Significantly upgraded gitignore parsing with hierarchical rule handling, caching optimizations, and precise pattern matching. Enjoy accurate, git-consistent exclusions with enhanced logging for effortless debugging.</li>
+            <li><b>🚀 Accuracy Boosts:</b> Optimized token counting for GPT-4 accuracy using the powerful <a href="https://github.com/knuddelsgmbh/jtokkit">Jtokkit library</a>, significantly enhancing export speed and responsiveness.</li>
+        </ul>
+
+        <h3>Version 1.6 – Powerful New Improvements</h3>
+        <ul>
+            <li><b>📜 Gitignore Integration:</b> Automatically respects your <code>.gitignore</code> settings, providing clean and relevant exports.</li>
+            <li><b>🧮 Token Count Insights:</b> Know exactly how much code you're exporting, helping you avoid LLM context overflow.</li>
+            <li><b>💻 Enhanced Settings Interface:</b> Now easier than ever to customize export limits and exclusions, with intuitive validation and user-friendly feedback.</li>
         </ul>
     ]]></change-notes>
 
@@ -77,7 +79,7 @@
                 class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.DumpFolderContentsAction"
                 text="Export Source to Clipboard"
                 description="Export source code and file paths to clipboard">
-            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+            <add-to-group group-id="ProjectViewPopupMenu" />
         </action>
         <action id="SourceClipboardExport.ToggleFilters"
                 class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ToggleFiltersAction"

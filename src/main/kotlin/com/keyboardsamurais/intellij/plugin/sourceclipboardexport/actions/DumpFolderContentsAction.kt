@@ -1,6 +1,7 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions
 
 import com.intellij.notification.NotificationType
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
@@ -76,10 +77,13 @@ class DumpFolderContentsAction : AnAction() {
         logger.info("Copying to clipboard. Files: $fileCount, Chars: $charCount, Approx Tokens: $approxTokens")
         try {
             CopyPasteManager.getInstance().setContents(StringSelection(text))
+            // display charCount and approxTokens in a notification with thousand separators
+            val formattedCharCount = String.format("%,d", charCount)
+            val formattedApproxTokens = String.format("%,d", approxTokens)
             NotificationUtils.showNotification(
                 project,
                 "Content Copied",
-                "Selected content ($fileCount files, $charCount chars, ~$approxTokens tokens) copied.",
+                "Selected content $formattedCharCount chars, ~$formattedApproxTokens tokens copied.",
                 NotificationType.INFORMATION
             )
         } catch (e: Exception) {
@@ -145,9 +149,24 @@ class DumpFolderContentsAction : AnAction() {
         )
     }
 
-     override fun update(e: AnActionEvent) {
+
+    override fun update(e: AnActionEvent) {
         val project = e.project
         val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)
-        e.presentation.isEnabledAndVisible = project != null && !selectedFiles.isNullOrEmpty()
+
+        // Keep the original logic for visibility based on VIRTUAL_FILE_ARRAY
+        val isVisible = project != null && !selectedFiles.isNullOrEmpty()
+        e.presentation.isEnabledAndVisible = isVisible
+        logger.warn("  -> Setting isEnabledAndVisible to $isVisible")
+    }
+
+    /**
+     * Specifies that the update method should run on a background thread (BGT).
+     * This is required because accessing CommonDataKeys.VIRTUAL_FILE_ARRAY
+     * is considered potentially slow by the platform and is discouraged on the EDT.
+     * Running on BGT allows the platform to compute the data beforehand.
+     */
+    override fun getActionUpdateThread(): ActionUpdateThread {
+        return ActionUpdateThread.BGT
     }
 } 
