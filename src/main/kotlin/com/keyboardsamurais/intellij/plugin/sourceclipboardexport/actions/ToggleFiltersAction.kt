@@ -1,6 +1,7 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions
 
 import com.intellij.notification.NotificationType
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.project.DumbAware
@@ -30,5 +31,13 @@ class ToggleFiltersAction : AnAction(), DumbAware {
         val status = if (settings.state.areFiltersEnabled) "Enabled" else "Disabled"
         e.presentation.text = "Filters: $status"
         e.presentation.isEnabledAndVisible = e.project != null
+    }
+
+    /**
+     * Specifies that the update method should run on the EDT.
+     * This is required because it updates the presentation.
+     */
+    override fun getActionUpdateThread(): ActionUpdateThread {
+        return ActionUpdateThread.EDT
     }
 } 
