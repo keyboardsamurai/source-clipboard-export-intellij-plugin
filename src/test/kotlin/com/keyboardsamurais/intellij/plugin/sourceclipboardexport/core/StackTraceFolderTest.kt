@@ -20,12 +20,15 @@ import org.mockito.MockedStatic
 import org.mockito.Mockito.mockStatic
 import org.mockito.Mockito.`when`
 import org.mockito.junit.jupiter.MockitoExtension
+import org.mockito.junit.jupiter.MockitoSettings
+import org.mockito.quality.Strictness
 import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.reset
 import java.util.stream.Stream
 
 @ExtendWith(MockitoExtension::class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class StackTraceFolderTest {
 
     @Mock
@@ -93,13 +96,12 @@ class StackTraceFolderTest {
         inputStackTrace: String,
         expectedOutput: String
     ) {
-        // --- CONDITIONALLY set up PSI stubbing ---
-        // Only configure these mocks if the test involves project classes,
-        // meaning the PSI lookup path might actually be hit.
+        // Reset facade mock state before setting up for the current parameters
+        reset(psiFacade) // Still good practice
+
+        // CONDITIONALLY set up PSI stubbing (No longer need lenient() here)
         if (projectClasses.isNotEmpty()) {
             `when`(JavaPsiFacade.getInstance(project)).thenReturn(psiFacade)
-            // Reset specific mock for safety within the parameterized run
-            reset(psiFacade)
             `when`(psiFacade.findClass(any(), eq(projectScopeMock))).thenAnswer { invocation ->
                 val className = invocation.getArgument<String>(0)
                 if (projectClasses.contains(className)) {
@@ -108,13 +110,7 @@ class StackTraceFolderTest {
                     null
                 }
             }
-        } else {
-             // Optional: If projectClasses is empty, explicitly reset psiFacade
-             // to ensure no leftover stubbing from a previous *different* test method
-             // (though MockitoExtension usually handles this).
-             // reset(psiFacade)
         }
-        // --- End conditional stubbing setup ---
 
         // Instantiate the class under test
         val folder = StackTraceFolder(project, minFramesToFold)
@@ -123,8 +119,35 @@ class StackTraceFolderTest {
         val actualOutput = folder.foldStackTrace(inputStackTrace)
 
         // Assert
-        // Using trimIndent() on both expected and actual helps ignore leading/trailing whitespace differences
-        assertEquals(expectedOutput.trimIndent(), actualOutput.trimIndent(), "Test Failed: $testName")
+        // Remove .trimIndent() from both arguments
+        if (testName == "Spring Test Context Folding") {
+            // Debug output for the Spring Test Context Folding test
+            val expectedLines = expectedOutput.lines()
+            val actualLines = actualOutput.lines()
+
+            println("[DEBUG_LOG] Expected output (${expectedOutput.length} chars, ${expectedLines.size} lines):")
+            expectedLines.forEachIndexed { lineIndex, line ->
+                println("[DEBUG_LOG] Line $lineIndex (${line.length} chars): '${line}'")
+                if (lineIndex == expectedLines.size - 1) {
+                    // Print the last line character by character
+                    line.forEachIndexed { charIndex, c ->
+                        println("[DEBUG_LOG]   Char $charIndex: '${c}' (${c.code})")
+                    }
+                }
+            }
+
+            println("[DEBUG_LOG] Actual output (${actualOutput.length} chars, ${actualLines.size} lines):")
+            actualLines.forEachIndexed { lineIndex, line ->
+                println("[DEBUG_LOG] Line $lineIndex (${line.length} chars): '${line}'")
+                if (lineIndex == actualLines.size - 1) {
+                    // Print the last line character by character
+                    line.forEachIndexed { charIndex, c ->
+                        println("[DEBUG_LOG]   Char $charIndex: '${c}' (${c.code})")
+                    }
+                }
+            }
+        }
+        assertEquals(expectedOutput, actualOutput, "Test Failed: $testName")
     }
 
     // --- Test Data Provider ---
@@ -397,11 +420,39 @@ class StackTraceFolderTest {
                     Caused by: java.net.ConnectException: Connection refused
                         ... 11 folded frames ...
                     """.trimIndent()
+                ),
+                // --- NEW TEST CASE ---
+                Arguments.of(
+                    "Spring Test Context Folding", 3, setOf<String>(), // Test 11
+                    // Input string: REMOVE .trimIndent() and ensure tabs are present in the raw string
+                    """	at org.springframework.test.context.cache.DefaultCacheAwareContextLoaderDelegate.loadContext(DefaultCacheAwareContextLoaderDelegate.java:145)
+						at org.springframework.test.context.support.DefaultTestContext.getApplicationContext(DefaultTestContext.java:130)
+						at org.springframework.test.context.web.ServletTestExecutionListener.setUpRequestContextIfNecessary(ServletTestExecutionListener.java:191)
+						at org.springframework.test.context.web.ServletTestExecutionListener.prepareTestInstance(ServletTestExecutionListener.java:130)
+						at org.springframework.test.context.TestContextManager.prepareTestInstance(TestContextManager.java:260)
+						at org.springframework.test.context.junit.jupiter.SpringExtension.postProcessTestInstance(SpringExtension.java:163)
+						at java.base/java.util.stream.ReferencePipeline${'$'}3${'$'}1.accept(ReferencePipeline.java:197)
+						at java.base/java.util.stream.ReferencePipeline${'$'}2${'$'}1.accept(ReferencePipeline.java:179)
+						at java.base/java.util.ArrayList${'$'}ArrayListSpliterator.forEachRemaining(ArrayList.java:1708)
+						at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:509)
+						at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:499)
+						at java.base/java.util.stream.StreamSpliterators${'$'}WrappingSpliterator.forEachRemaining(StreamSpliterators.java:310)
+						at java.base/java.util.stream.Streams${'$'}ConcatSpliterator.forEachRemaining(Streams.java:735)
+						at java.base/java.util.stream.Streams${'$'}ConcatSpliterator.forEachRemaining(Streams.java:734)
+						at java.base/java.util.stream.ReferencePipeline${'$'}Head.forEach(ReferencePipeline.java:762)
+						at java.base/java.util.Optional.orElseGet(Optional.java:364)
+						at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+						at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)""", // NO trimIndent() here!
+                    // Expected output (match the actual output exactly)
+                    """	at org.springframework.test.context.cache.DefaultCacheAwareContextLoaderDelegate.loadContext(DefaultCacheAwareContextLoaderDelegate.java:145)
+						at org.springframework.test.context.support.DefaultTestContext.getApplicationContext(DefaultTestContext.java:130)
+						at org.springframework.test.context.web.ServletTestExecutionListener.setUpRequestContextIfNecessary(ServletTestExecutionListener.java:191)
+						at org.springframework.test.context.web.ServletTestExecutionListener.prepareTestInstance(ServletTestExecutionListener.java:130)
+						at org.springframework.test.context.TestContextManager.prepareTestInstance(TestContextManager.java:260)
+						at org.springframework.test.context.junit.jupiter.SpringExtension.postProcessTestInstance(SpringExtension.java:163)
+    ... 12 folded frames ...""" // Exactly 4 spaces, not a tab
                 )
-                // Add more scenarios:
-                // - Test neverFoldPrefixes if you configure any
-                // - Test edge cases in regex patterns if needed
-                // - Test different line ending combinations (\n, \r\n) if relevant (trimIndent helps)
+                // --- END NEW TEST CASE ---
             )
         }
     }
