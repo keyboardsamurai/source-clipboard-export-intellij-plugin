@@ -19,6 +19,9 @@ dependencies {
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
     testImplementation("org.junit.jupiter:junit-jupiter-params:5.10.2") // For parameterized tests
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5:1.9.24")
+    testImplementation("org.mockito:mockito-core:5.17.0")
+    testImplementation("org.mockito:mockito-junit-jupiter:5.17.0")
+    testImplementation("org.mockito.kotlin:mockito-kotlin:5.4.0")
     testImplementation("io.mockk:mockk:1.13.10")
 }
 

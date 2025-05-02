@@ -61,7 +61,8 @@
     <!-- Product and plugin compatibility requirements.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
     <depends>com.intellij.modules.platform</depends>
-
+    <!-- depends>com.intellij.modules.execution</depends -->
+    <depends>com.intellij.java</depends>
     <!-- Extension points defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
@@ -84,6 +85,15 @@
                 description="Toggle file extension filters on/off">
             <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="SourceClipboardExport.DumpFolderContents"/>
         </action>
+
+        <!-- New Action for Folding Stack Traces -->
+        <action id="SourceClipboardExport.FoldAndCopyStackTrace"
+                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.FoldAndCopyStackTraceAction"
+                text="Copy Folded Stacktrace to Clipboard"
+                description="Folds external library frames in the selected stack trace and copies it.">
+            <add-to-group group-id="ConsoleEditorPopupMenu" anchor="last"/>
+        </action>
+
     </actions>
 
 </idea-plugin>
