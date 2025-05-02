@@ -319,3 +319,5 @@ Network Trash Folder
 Temporary Items
 .apdisk
 
+# SpecStory explanation file
+.specstory/.what-is-this.md
