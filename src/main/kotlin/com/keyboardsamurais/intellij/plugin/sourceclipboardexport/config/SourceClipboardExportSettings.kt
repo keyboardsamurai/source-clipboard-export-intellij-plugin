@@ -24,6 +24,7 @@ class SourceClipboardExportSettings : PersistentStateComponent<SourceClipboardEx
         var includeDirectoryStructure: Boolean = false
         var includeFilesInStructure: Boolean = false
         var includeRepositorySummary: Boolean = false
+        var includeLineNumbers: Boolean = false
         var outputFormat: OutputFormat = OutputFormat.PLAIN_TEXT
     }
 

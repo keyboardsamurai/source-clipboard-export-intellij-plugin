@@ -58,10 +58,35 @@ class SourceExporter(
         val limitReached: Boolean
     )
 
+    /**
+     * Adds line numbers to the file content.
+     * Each line will be prefixed with its line number.
+     *
+     * @param content The file content to add line numbers to
+     * @return The file content with line numbers added
+     */
+    private fun addLineNumbers(content: String): String {
+        val lines = content.lines()
+        val lineNumberWidth = lines.size.toString().length
+        val result = StringBuilder()
+
+        for ((index, line) in lines.withIndex()) {
+            val lineNumber = (index + 1).toString().padStart(lineNumberWidth, ' ')
+            result.append("$lineNumber: $line\n")
+        }
+
+        // Remove the last newline if the original content didn't end with one
+        if (!content.endsWith("\n") && result.isNotEmpty()) {
+            result.setLength(result.length - 1)
+        }
+
+        return result.toString()
+    }
+
 
     suspend fun exportSources(selectedFiles: Array<VirtualFile>): ExportResult {
         logger.info("Starting source export process.")
-        logger.info("Settings: Max Files=${settings.fileCount}, Max Size KB=${settings.maxFileSizeKb}, Filters Enabled=${settings.areFiltersEnabled}, Filters=${settings.filenameFilters.joinToString()}, Ignored=${settings.ignoredNames.joinToString()}, Include Prefix=${settings.includePathPrefix}")
+        logger.info("Settings: Max Files=${settings.fileCount}, Max Size KB=${settings.maxFileSizeKb}, Filters Enabled=${settings.areFiltersEnabled}, Filters=${settings.filenameFilters.joinToString()}, Ignored=${settings.ignoredNames.joinToString()}, Include Prefix=${settings.includePathPrefix}, Include Line Numbers=${settings.includeLineNumbers}")
 
         // Clear the hierarchical parser's cache to ensure fresh .gitignore parsing
         hierarchicalGitignoreParser.clearCache()
@@ -316,6 +341,13 @@ class SourceExporter(
      * @param scope The coroutine scope.
      * @param localBuffer The local buffer to add file contents to.
      */
+    /**
+     * Iterates over directory children and calls processEntry for each.
+     * 
+     * @param directory The directory to process.
+     * @param scope The coroutine scope.
+     * @param localBuffer The local buffer to add file contents to.
+     */
     private suspend fun processDirectoryChildren(directory: VirtualFile, scope: CoroutineScope, localBuffer: MutableList<String>) {
         try {
             val children = directory.children ?: return // No children or error reading them
@@ -406,11 +438,16 @@ class SourceExporter(
 
         // --- Read File Content ---
         scope.ensureActive() // Check cancellation before reading content
-        val fileContent = try {
+        var fileContent = try {
             FileUtils.readFileContent(file)
         } catch (e: Exception) {
             logger.error("Error reading file content for $relativePath", e)
             "// Error reading file: ${file.path} (${e.message})" // Indicate error in output
+        }
+
+        // Add line numbers if enabled
+        if (settings.includeLineNumbers && !fileContent.startsWith("// Error reading file:")) {
+            fileContent = addLineNumbers(fileContent)
         }
 
 
