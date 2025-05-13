@@ -43,6 +43,7 @@ class SourceClipboardExportConfigurable : Configurable {
     private var includeDirectoryStructureCheckBox: JBCheckBox? = null
     private var includeFilesInStructureCheckBox: JBCheckBox? = null
     private var includeRepositorySummaryCheckBox: JBCheckBox? = null
+    private var includeLineNumbersCheckBox: JBCheckBox? = null
     private var outputFormatComboBox: JComboBox<String>? = null
 
     override fun createComponent(): JComponent? {
@@ -51,6 +52,7 @@ class SourceClipboardExportConfigurable : Configurable {
 
         addFileLimitsPanel(gbc)
         addPathPrefixToggle(gbc)
+        addLineNumbersToggle(gbc)
         addDirectoryStructureToggles(gbc)
         addRepositorySummaryToggle(gbc)
         addOutputFormatDropdown(gbc)
@@ -108,6 +110,13 @@ class SourceClipboardExportConfigurable : Configurable {
         includePathPrefixCheckBox = JBCheckBox("Include '// filename: path' prefix in output")
         includePathPrefixCheckBox!!.toolTipText = "If checked, each file's content will be preceded by a comment with its relative path."
         settingsPanel!!.add(includePathPrefixCheckBox, gbc)
+        gbc.gridy++
+    }
+
+    private fun addLineNumbersToggle(gbc: GridBagConstraints) {
+        includeLineNumbersCheckBox = JBCheckBox("Include line numbers in copied code")
+        includeLineNumbersCheckBox!!.toolTipText = "If checked, line numbers will be added to the beginning of each line in the copied code."
+        settingsPanel!!.add(includeLineNumbersCheckBox, gbc)
         gbc.gridy++
     }
 
@@ -277,6 +286,7 @@ class SourceClipboardExportConfigurable : Configurable {
                includeDirectoryStructureCheckBox!!.isSelected != settings.includeDirectoryStructure ||
                includeFilesInStructureCheckBox!!.isSelected != settings.includeFilesInStructure ||
                includeRepositorySummaryCheckBox!!.isSelected != settings.includeRepositorySummary ||
+               includeLineNumbersCheckBox!!.isSelected != settings.includeLineNumbers ||
                currentFilters != settings.filenameFilters || // Direct list comparison
                currentIgnoredNames != settings.ignoredNames || // Direct list comparison
                currentOutputFormat != settings.outputFormat
@@ -292,6 +302,7 @@ class SourceClipboardExportConfigurable : Configurable {
         settings.includeDirectoryStructure = includeDirectoryStructureCheckBox!!.isSelected
         settings.includeFilesInStructure = includeFilesInStructureCheckBox!!.isSelected
         settings.includeRepositorySummary = includeRepositorySummaryCheckBox!!.isSelected
+        settings.includeLineNumbers = includeLineNumbersCheckBox!!.isSelected
 
         // Update output format from dropdown
         val selectedFormatIndex = outputFormatComboBox?.selectedIndex ?: 0
@@ -313,6 +324,7 @@ class SourceClipboardExportConfigurable : Configurable {
         LOGGER.debug("Applying settings: File count = ${settings.fileCount}, Max Size KB = ${settings.maxFileSizeKb}, " +
                 "Include Prefix = ${settings.includePathPrefix}, Include Directory Structure = ${settings.includeDirectoryStructure}, " +
                 "Include Files in Structure = ${settings.includeFilesInStructure}, Include Repository Summary = ${settings.includeRepositorySummary}, " +
+                "Include Line Numbers = ${settings.includeLineNumbers}, " +
                 "Output Format = ${settings.outputFormat}, " +
                 "Filters = ${settings.filenameFilters.joinToString()}, " +
                 "Ignored = ${settings.ignoredNames.joinToString()}")
@@ -326,6 +338,7 @@ class SourceClipboardExportConfigurable : Configurable {
         includeDirectoryStructureCheckBox!!.isSelected = settings.includeDirectoryStructure
         includeFilesInStructureCheckBox!!.isSelected = settings.includeFilesInStructure
         includeRepositorySummaryCheckBox!!.isSelected = settings.includeRepositorySummary
+        includeLineNumbersCheckBox!!.isSelected = settings.includeLineNumbers
 
         // Set the output format dropdown
         val formatIndex = when (settings.outputFormat) {
@@ -345,7 +358,9 @@ class SourceClipboardExportConfigurable : Configurable {
 
         LOGGER.debug("Resetting settings UI to: File count = ${settings.fileCount}, Max Size KB = ${settings.maxFileSizeKb}, " +
                 "Include Prefix = ${settings.includePathPrefix}, Include Directory Structure = ${settings.includeDirectoryStructure}, " +
-                "Include Files in Structure = ${settings.includeFilesInStructure}, Output Format = ${settings.outputFormat}, " +
+                "Include Files in Structure = ${settings.includeFilesInStructure}, Include Repository Summary = ${settings.includeRepositorySummary}, " +
+                "Include Line Numbers = ${settings.includeLineNumbers}, " +
+                "Output Format = ${settings.outputFormat}, " +
                 "Filters = ${settings.filenameFilters.joinToString()}, " +
                 "Ignored = ${settings.ignoredNames.joinToString()}")
     }
