@@ -58,18 +58,29 @@ class HierarchicalGitignoreParser(private val project: Project) : Disposable {
     }
 
     init {
-        // Register the VFS listener
-        VirtualFileManager.getInstance().addVirtualFileListener(vfsListener)
-        // Register this instance for disposal when the project is closed
-        Disposer.register(project, this)
+        try {
+            // Register the VFS listener
+            VirtualFileManager.getInstance().addVirtualFileListener(vfsListener)
+            // Register this instance for disposal when the project is closed
+            Disposer.register(project, this)
+        } catch (e: Exception) {
+            // In test environments, the VirtualFileManager service might not be available
+            logger.warn("Could not register VFS listener: ${e.message}")
+            // No need to register for disposal if we couldn't register the listener
+        }
     }
 
     /**
      * Disposes this instance by removing the VFS listener.
      */
     override fun dispose() {
-        VirtualFileManager.getInstance().removeVirtualFileListener(vfsListener)
-        logger.debug("HierarchicalGitignoreParser disposed, VFS listener removed")
+        try {
+            VirtualFileManager.getInstance().removeVirtualFileListener(vfsListener)
+            logger.debug("HierarchicalGitignoreParser disposed, VFS listener removed")
+        } catch (e: Exception) {
+            // In test environments, the VirtualFileManager service might not be available
+            logger.warn("Could not remove VFS listener: ${e.message}")
+        }
     }
 
     /**

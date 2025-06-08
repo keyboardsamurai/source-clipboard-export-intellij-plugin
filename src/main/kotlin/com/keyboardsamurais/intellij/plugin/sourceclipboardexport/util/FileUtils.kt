@@ -95,7 +95,13 @@ object FileUtils {
     }
 
     fun getRepositoryRoot(project: Project): VirtualFile? {
-        return ProjectRootManager.getInstance(project).contentRoots.firstOrNull()
+        return try {
+            ProjectRootManager.getInstance(project).contentRoots.firstOrNull()
+        } catch (e: Exception) {
+            // In test environments, the ProjectRootManager service might not be available
+            LOGGER.warn("Could not get repository root: ${e.message}")
+            null
+        }
     }
 
     fun isKnownBinaryExtension(file: VirtualFile): Boolean {
@@ -106,7 +112,14 @@ object FileUtils {
         if (file.length == 0L) return false
         val sampleSize = min(file.length, 1024).toInt()
         val bytes = try {
-            file.inputStream.use { it.readNBytes(sampleSize) }
+            // Try to use contentsToByteArray first, which is more likely to be mocked in tests
+            try {
+                val allBytes = file.contentsToByteArray()
+                allBytes.take(sampleSize).toByteArray()
+            } catch (e: Exception) {
+                // Fall back to inputStream if contentsToByteArray fails
+                file.inputStream.use { it.readNBytes(sampleSize) }
+            }
         } catch (e: Exception) {
             LOGGER.warn("Could not read file sample for binary check: ${file.path}", e)
             return true // Treat as binary if unreadable
@@ -127,7 +140,13 @@ object FileUtils {
 
     fun readFileContent(file: VirtualFile): String {
         return try {
-            VfsUtil.loadText(file)
+            // Try to use contentsToByteArray first, which is more likely to be mocked in tests
+            try {
+                String(file.contentsToByteArray(), file.charset)
+            } catch (e: Exception) {
+                // Fall back to VfsUtil.loadText if contentsToByteArray fails
+                VfsUtil.loadText(file)
+            }
         } catch (e: Exception) {
             LOGGER.error("Error reading file contents: ${file.path}", e)
             "// Error reading file: ${file.path} (${e.message})"

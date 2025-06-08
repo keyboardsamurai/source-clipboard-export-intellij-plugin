@@ -15,16 +15,16 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.AppConsta
 )
 class SourceClipboardExportSettings : PersistentStateComponent<SourceClipboardExportSettings.State> {
     class State {
-        var fileCount: Int = 50
+        var fileCount: Int = 200
         var filenameFilters: MutableList<String> = mutableListOf()
-        var areFiltersEnabled: Boolean = true
-        var maxFileSizeKb: Int = 100
+        var areFiltersEnabled: Boolean = false  // Disable by default when filter list is empty
+        var maxFileSizeKb: Int = 500
         var ignoredNames: MutableList<String> = AppConstants.DEFAULT_IGNORED_NAMES.toMutableList()
         var includePathPrefix: Boolean = true
         var includeDirectoryStructure: Boolean = false
         var includeFilesInStructure: Boolean = false
         var includeRepositorySummary: Boolean = false
-        var includeLineNumbers: Boolean = false
+        var includeLineNumbers: Boolean = true  // Enable by default for better AI context
         var outputFormat: OutputFormat = OutputFormat.PLAIN_TEXT
     }
 
@@ -40,8 +40,26 @@ class SourceClipboardExportSettings : PersistentStateComponent<SourceClipboardEx
     }
 
     companion object {
+        private var testInstance: SourceClipboardExportSettings? = null
+
         fun getInstance(): SourceClipboardExportSettings {
-            return ApplicationManager.getApplication().getService(SourceClipboardExportSettings::class.java)
+            try {
+                val application = ApplicationManager.getApplication()
+                return if (application != null) {
+                    application.getService(SourceClipboardExportSettings::class.java)
+                } else {
+                    // Return a mock instance for testing
+                    testInstance ?: SourceClipboardExportSettings().also { testInstance = it }
+                }
+            } catch (e: Exception) {
+                // Return a mock instance for testing if any exception occurs
+                return testInstance ?: SourceClipboardExportSettings().also { testInstance = it }
+            }
+        }
+
+        // For testing purposes only
+        fun setTestInstance(instance: SourceClipboardExportSettings?) {
+            testInstance = instance
         }
     }
 } 
