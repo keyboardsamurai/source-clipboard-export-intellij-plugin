@@ -26,6 +26,22 @@ object NotificationUtils {
         }
     }
 
+    fun createNotification(
+        title: String,
+        content: String,
+        type: NotificationType,
+        groupId: String = AppConstants.NOTIFICATION_GROUP_ID
+    ): Notification {
+        return try {
+            NotificationGroupManager.getInstance()
+                .getNotificationGroup(groupId)
+                .createNotification(title, content, type)
+        } catch (e: Exception) {
+            // Fallback for test environments
+            Notification(groupId, title, content, type)
+        }
+    }
+
     // Optional: Keep the expireAfter extension if used elsewhere, or integrate its logic if needed.
     fun Notification.expireAfter(millis: Int) {
         Timer(millis) { expire() }.apply {

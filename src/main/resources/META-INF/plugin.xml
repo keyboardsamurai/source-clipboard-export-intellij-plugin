@@ -55,11 +55,44 @@
                     <li>Filters automatically disabled when filter list is empty</li>
                 </ul>
             </li>
+            <li><b>🖥️ Quick Export Tool Window:</b> Optional visual export interface for power users:
+                <ul>
+                    <li>Interactive file tree with checkboxes for precise selection</li>
+                    <li>Real-time preview of export content with token count and size estimation</li>
+                    <li>Integrated toolbar with export, refresh, clear, and settings actions</li>
+                    <li>Completely optional - can be enabled/disabled in settings or hidden from main UI</li>
+                </ul>
+            </li>
+            <li><b>🧠 Smart Export Actions:</b> Context-aware export options for streamlined workflows:
+                <ul>
+                    <li><b>Export with Tests:</b> Automatically includes related test files for your selection</li>
+                    <li><b>Export with Configs:</b> Includes relevant configuration files (pom.xml, package.json, etc.)</li>
+                    <li><b>Export Recent Changes:</b> Exports files modified in the last 24 hours</li>
+                    <li><b>Export with Direct Imports:</b> Includes all directly imported files from the same project</li>
+                    <li><b>Export with Transitive Imports:</b> Includes all direct and transitive dependencies</li>
+                    <li>All accessible via right-click context menu under "Export Related Files"</li>
+                </ul>
+            </li>
+            <li><b>📝 Export History:</b> Track and revisit your export workflow:
+                <ul>
+                    <li>Automatically maintains history of your last 10 exports</li>
+                    <li>Stores timestamp, file count, size, token estimates, and file paths</li>
+                    <li>Persistent across IDE sessions for workflow continuity</li>
+                </ul>
+            </li>
+            <li><b>🔍 Export Diff View:</b> Compare and understand changes between exports:
+                <ul>
+                    <li>Visual diff showing added/removed files compared to last export</li>
+                    <li>Statistics comparison (file count, size, tokens) between exports</li>
+                    <li>"Copy Diff" button for easy sharing of change summaries</li>
+                    <li>"Export Changes Only" option to export just the newly added files</li>
+                </ul>
+            </li>
             <li><b>📊 Enhanced Notifications:</b> Copy notifications now show comprehensive information: file count, total size (KB/MB), and estimated token count</li>
             <li><b>👁️ Preview Export:</b> New "Preview Export" button in settings shows exactly what your export will look like with current settings</li>
             <li><b>⚡ Performance Improvements:</b> Now uses system CPU count for parallel processing instead of fixed thread count</li>
             <li><b>⚠️ Large Operation Warning:</b> Shows confirmation dialog when exporting more than 100 files to prevent accidental large exports</li>
-            <li><b>💬 Clearer Messages:</b> Improved error messages with specific guidance (e.g., "Please select files or folders in the Project view first")</li>
+            <li><b>💬 Clearer Messages:</b> Improved error messages with specific guidance and actionable "Open Settings" buttons when limits are reached</li>
             <li><b>🏷️ UI Enhancements:</b> Added tooltips to output format dropdown explaining each format, clearer action names, and dynamic filter state display</li>
         </ul>
 
@@ -96,6 +129,10 @@
                              displayName="Export Source to Clipboard"
                              id="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceClipboardExportConfigurable" />
         <notificationGroup id="SourceClipboardExport" displayType="BALLOON" />
+        <toolWindow id="ExportSource" 
+                    factoryClass="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.ui.ExportToolWindowFactory"
+                    anchor="right"
+                    canCloseContents="false"/>
     </extensions>
 
     <actions>
@@ -116,6 +153,22 @@
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift alt C"/>
             <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift alt C"/>
             <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta shift alt C"/>
+        </action>
+        
+        <!-- Smart Export Group -->
+        <group id="SourceClipboardExport.SmartExportGroup"
+               class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.SmartExportGroup"
+               text="Export Related Files"
+               description="Smart export with related files">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="SourceClipboardExport.ToggleFilters"/>
+        </group>
+        
+        <!-- Export Diff Action -->
+        <action id="SourceClipboardExport.ExportDiff"
+                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportDiffAction"
+                text="Export Diff"
+                description="Show differences from last export">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="SourceClipboardExport.SmartExportGroup"/>
         </action>
 
         <!-- New Action for Folding Stack Traces -->

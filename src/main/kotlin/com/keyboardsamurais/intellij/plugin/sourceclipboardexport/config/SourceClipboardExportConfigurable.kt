@@ -45,6 +45,7 @@ class SourceClipboardExportConfigurable : Configurable {
     private var includeRepositorySummaryCheckBox: JBCheckBox? = null
     private var includeLineNumbersCheckBox: JBCheckBox? = null
     private var outputFormatComboBox: JComboBox<String>? = null
+    private var showExportToolWindowCheckBox: JBCheckBox? = null
 
     override fun createComponent(): JComponent? {
         settingsPanel = JPanel(GridBagLayout())
@@ -56,6 +57,7 @@ class SourceClipboardExportConfigurable : Configurable {
         addDirectoryStructureToggles(gbc)
         addRepositorySummaryToggle(gbc)
         addOutputFormatDropdown(gbc)
+        addUIOptionsPanel(gbc)
         addFiltersPanel(gbc)
         addFiltersTable(gbc)
         addIgnoredNamesPanel(gbc)
@@ -139,6 +141,13 @@ class SourceClipboardExportConfigurable : Configurable {
         includeRepositorySummaryCheckBox = JBCheckBox("Include repository summary")
         includeRepositorySummaryCheckBox!!.toolTipText = "If checked, a summary of repository statistics will be included at the beginning of the output."
         settingsPanel!!.add(includeRepositorySummaryCheckBox, gbc)
+        gbc.gridy++
+    }
+
+    private fun addUIOptionsPanel(gbc: GridBagConstraints) {
+        showExportToolWindowCheckBox = JBCheckBox("Show Export Tool Window (requires restart)")
+        showExportToolWindowCheckBox!!.toolTipText = "Show optional export tool window in the IDE sidebar for quick file selection and preview"
+        settingsPanel!!.add(showExportToolWindowCheckBox, gbc)
         gbc.gridy++
     }
 
@@ -296,6 +305,7 @@ class SourceClipboardExportConfigurable : Configurable {
                includeFilesInStructureCheckBox!!.isSelected != settings.includeFilesInStructure ||
                includeRepositorySummaryCheckBox!!.isSelected != settings.includeRepositorySummary ||
                includeLineNumbersCheckBox!!.isSelected != settings.includeLineNumbers ||
+               showExportToolWindowCheckBox!!.isSelected != settings.showExportToolWindow ||
                currentFilters != settings.filenameFilters || // Direct list comparison
                currentIgnoredNames != settings.ignoredNames || // Direct list comparison
                currentOutputFormat != settings.outputFormat
@@ -312,6 +322,7 @@ class SourceClipboardExportConfigurable : Configurable {
         settings.includeFilesInStructure = includeFilesInStructureCheckBox!!.isSelected
         settings.includeRepositorySummary = includeRepositorySummaryCheckBox!!.isSelected
         settings.includeLineNumbers = includeLineNumbersCheckBox!!.isSelected
+        settings.showExportToolWindow = showExportToolWindowCheckBox!!.isSelected
 
         // Update output format from dropdown
         val selectedFormatIndex = outputFormatComboBox?.selectedIndex ?: 0
@@ -348,6 +359,7 @@ class SourceClipboardExportConfigurable : Configurable {
         includeFilesInStructureCheckBox!!.isSelected = settings.includeFilesInStructure
         includeRepositorySummaryCheckBox!!.isSelected = settings.includeRepositorySummary
         includeLineNumbersCheckBox!!.isSelected = settings.includeLineNumbers
+        showExportToolWindowCheckBox!!.isSelected = settings.showExportToolWindow
 
         // Set the output format dropdown
         val formatIndex = when (settings.outputFormat) {
