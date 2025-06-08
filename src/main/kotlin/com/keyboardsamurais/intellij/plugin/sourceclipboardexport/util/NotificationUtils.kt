@@ -14,10 +14,16 @@ object NotificationUtils {
         type: NotificationType,
         groupId: String = AppConstants.NOTIFICATION_GROUP_ID // Use constant
     ) {
-        NotificationGroupManager.getInstance()
-            .getNotificationGroup(groupId)
-            .createNotification(title, content, type)
-            .notify(project)
+        try {
+            NotificationGroupManager.getInstance()
+                .getNotificationGroup(groupId)
+                .createNotification(title, content, type)
+                .notify(project)
+        } catch (e: Exception) {
+            // In test environments, the Application service might not be available
+            // Just log the notification content instead
+            println("NOTIFICATION: [$type] $title - $content")
+        }
     }
 
     // Optional: Keep the expireAfter extension if used elsewhere, or integrate its logic if needed.

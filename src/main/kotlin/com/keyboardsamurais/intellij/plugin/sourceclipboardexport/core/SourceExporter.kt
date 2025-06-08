@@ -101,7 +101,7 @@ class SourceExporter(
             val scopeJob = SupervisorJob()
             // Limit parallelism to avoid spawning too many coroutines
             // This prevents excessive thread creation and context switching
-            val limitedDispatcher = Dispatchers.IO.limitedParallelism(16) // Reasonable limit for most systems
+            val limitedDispatcher = Dispatchers.IO.limitedParallelism(Runtime.getRuntime().availableProcessors()) // Use system CPU count
 
             selectedFiles.forEach { file ->
                 launch(scopeJob + limitedDispatcher) {

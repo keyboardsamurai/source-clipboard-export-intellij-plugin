@@ -39,6 +39,30 @@
 ]]></description>
 
     <change-notes><![CDATA[
+        <h3>Version 1.8 – Enhanced User Experience 🎯</h3>
+        <ul>
+            <li><b>⌨️ Keyboard Shortcuts:</b> Added convenient keyboard shortcuts for quick access:
+                <ul>
+                    <li><code>Ctrl+Shift+C</code> (Windows/Linux) or <code>Cmd+Shift+C</code> (Mac) - Export Files/Folders to Clipboard</li>
+                    <li><code>Ctrl+Shift+Alt+C</code> (Windows/Linux) or <code>Cmd+Shift+Alt+C</code> (Mac) - Toggle Filters</li>
+                </ul>
+            </li>
+            <li><b>🎯 Smarter Defaults:</b> Improved out-of-box experience with better default settings:
+                <ul>
+                    <li>Increased default file count limit from 50 to 200 files</li>
+                    <li>Increased default file size limit from 100KB to 500KB</li>
+                    <li>Line numbers now enabled by default for better AI/LLM context</li>
+                    <li>Filters automatically disabled when filter list is empty</li>
+                </ul>
+            </li>
+            <li><b>📊 Enhanced Notifications:</b> Copy notifications now show comprehensive information: file count, total size (KB/MB), and estimated token count</li>
+            <li><b>👁️ Preview Export:</b> New "Preview Export" button in settings shows exactly what your export will look like with current settings</li>
+            <li><b>⚡ Performance Improvements:</b> Now uses system CPU count for parallel processing instead of fixed thread count</li>
+            <li><b>⚠️ Large Operation Warning:</b> Shows confirmation dialog when exporting more than 100 files to prevent accidental large exports</li>
+            <li><b>💬 Clearer Messages:</b> Improved error messages with specific guidance (e.g., "Please select files or folders in the Project view first")</li>
+            <li><b>🏷️ UI Enhancements:</b> Added tooltips to output format dropdown explaining each format, clearer action names, and dynamic filter state display</li>
+        </ul>
+
         <h3>Version 1.7 – Enhanced Stack Traces & Gitignore Magic ✨</h3>
         <ul>
             <li><b>📌 Stack Trace Folding:</b> Introduced intelligent stack trace folding in console views. Library frames are neatly collapsed, highlighting your project code clearly:
@@ -77,22 +101,28 @@
     <actions>
         <action id="SourceClipboardExport.DumpFolderContents"
                 class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.DumpFolderContentsAction"
-                text="Export Source to Clipboard"
+                text="Export Files/Folders to Clipboard"
                 description="Export source code and file paths to clipboard">
             <add-to-group group-id="ProjectViewPopupMenu" />
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift C"/>
+            <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift C"/>
+            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta shift C"/>
         </action>
         <action id="SourceClipboardExport.ToggleFilters"
                 class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ToggleFiltersAction"
                 text="Toggle Filters"
                 description="Toggle file extension filters on/off">
             <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="SourceClipboardExport.DumpFolderContents"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift alt C"/>
+            <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift alt C"/>
+            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta shift alt C"/>
         </action>
 
         <!-- New Action for Folding Stack Traces -->
         <action id="SourceClipboardExport.FoldAndCopyStackTrace"
                 class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.FoldAndCopyStackTraceAction"
-                text="Copy Folded Stacktrace to Clipboard"
-                description="Folds external library frames in the selected stack trace and copies it.">
+                text="Copy Compact Stack Trace"
+                description="Folds external library frames in the selected stack trace and copies a compact version to clipboard.">
             <add-to-group group-id="ConsoleEditorPopupMenu" anchor="last"/>
         </action>
 

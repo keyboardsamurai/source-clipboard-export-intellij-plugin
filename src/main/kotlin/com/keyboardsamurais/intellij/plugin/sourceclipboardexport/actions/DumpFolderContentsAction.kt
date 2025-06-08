@@ -11,12 +11,14 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.VirtualFile
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceClipboardExportSettings
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.SourceExporter
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.StringUtils
 import kotlinx.coroutines.runBlocking
 import java.awt.datatransfer.StringSelection
+import javax.swing.JOptionPane
 
 class DumpFolderContentsAction : AnAction() {
 
@@ -32,13 +34,32 @@ class DumpFolderContentsAction : AnAction() {
             NotificationUtils.showNotification(
                 project,
                 "Error",
-                "No files or directories selected",
+                "Please select files or folders in the Project view first",
                 NotificationType.ERROR
             )
             return
         }
 
         val settingsState = SourceClipboardExportSettings.getInstance().state
+
+        // Estimate the number of files that might be processed
+        val estimatedFileCount = estimateFileCount(selectedFiles)
+
+        // Show warning for large operations
+        if (estimatedFileCount > 100) {
+            val result = JOptionPane.showConfirmDialog(
+                null,
+                "This operation will process approximately $estimatedFileCount files.\nThis might take some time. Continue?",
+                "Large Export Operation",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE
+            )
+
+            if (result != JOptionPane.YES_OPTION) {
+                logger.info("User cancelled large export operation")
+                return
+            }
+        }
 
         ProgressManager.getInstance().run(object : Task.Backgroundable(project, "Exporting Source to Clipboard") {
             override fun run(indicator: ProgressIndicator) {
@@ -53,7 +74,11 @@ class DumpFolderContentsAction : AnAction() {
                     NotificationUtils.showNotification(
                         project,
                         "Warning",
-                        "No content to copy (check filters, size limits, ignored files, and selection)",
+                        "No content to copy. Check that your selection isn't:\n" +
+                        "• Filtered out (Settings → Export Source to Clipboard)\n" +
+                        "• Exceeding size limit (${settingsState.maxFileSizeKb}KB)\n" +
+                        "• In ignored folders (${settingsState.ignoredNames.take(3).joinToString(", ")}...)\n" +
+                        "• Excluded by .gitignore",
                         NotificationType.WARNING
                     )
                 } else {
@@ -73,17 +98,24 @@ class DumpFolderContentsAction : AnAction() {
     private fun copyToClipboard(text: String, fileCount: Int, project: Project?) {
         val charCount = text.length
         val approxTokens = StringUtils.estimateTokensWithSubwordHeuristic(text)
+        val sizeInBytes = text.toByteArray(Charsets.UTF_8).size
+        val sizeInMB = sizeInBytes / (1024.0 * 1024.0)
 
         logger.info("Copying to clipboard. Files: $fileCount, Chars: $charCount, Approx Tokens: $approxTokens")
         try {
             CopyPasteManager.getInstance().setContents(StringSelection(text))
-            // display charCount and approxTokens in a notification with thousand separators
-            val formattedCharCount = String.format("%,d", charCount)
+            // display approxTokens in a notification with thousand separators
             val formattedApproxTokens = String.format("%,d", approxTokens)
+            val formattedSize = if (sizeInMB >= 1.0) {
+                String.format("%.1fMB", sizeInMB)
+            } else {
+                String.format("%.1fKB", sizeInBytes / 1024.0)
+            }
+
             NotificationUtils.showNotification(
                 project,
                 "Content Copied",
-                "Selected content $formattedCharCount chars, ~$formattedApproxTokens tokens copied.",
+                "Copied $fileCount files ($formattedSize, ~$formattedApproxTokens tokens)",
                 NotificationType.INFORMATION
             )
         } catch (e: Exception) {
@@ -168,5 +200,31 @@ class DumpFolderContentsAction : AnAction() {
      */
     override fun getActionUpdateThread(): ActionUpdateThread {
         return ActionUpdateThread.BGT
+    }
+
+    private fun estimateFileCount(files: Array<VirtualFile>): Int {
+        var count = 0
+        val visited = mutableSetOf<VirtualFile>()
+
+        fun countFiles(file: VirtualFile): Boolean {
+            if (file in visited || count >= 1000) return count >= 1000
+            visited.add(file)
+
+            if (file.isDirectory) {
+                file.children?.forEach { child ->
+                    if (countFiles(child)) return true // Stop if we've reached the limit
+                }
+            } else {
+                count++
+                if (count >= 1000) return true
+            }
+            return count >= 1000
+        }
+
+        for (file in files) {
+            if (countFiles(file)) break // Stop if we've reached the limit
+        }
+
+        return count
     }
 } 
