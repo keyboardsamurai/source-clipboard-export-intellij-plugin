@@ -26,6 +26,7 @@ class SourceClipboardExportSettings : PersistentStateComponent<SourceClipboardEx
         var includeRepositorySummary: Boolean = false
         var includeLineNumbers: Boolean = true  // Enable by default for better AI context
         var outputFormat: OutputFormat = OutputFormat.PLAIN_TEXT
+        var showExportToolWindow: Boolean = false  // Optional tool window, disabled by default
     }
 
     private var myState = State()

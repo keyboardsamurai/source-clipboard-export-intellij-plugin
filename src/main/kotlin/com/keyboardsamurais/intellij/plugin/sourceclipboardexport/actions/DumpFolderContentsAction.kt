@@ -1,5 +1,7 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions
 
+import com.intellij.notification.Notification
+import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
@@ -7,12 +9,14 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.ide.CopyPasteManager
+import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceClipboardExportSettings
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.ExportHistory
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.SourceExporter
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.StringUtils
@@ -82,7 +86,7 @@ class DumpFolderContentsAction : AnAction() {
                         NotificationType.WARNING
                     )
                 } else {
-                    copyToClipboard(result.content, result.processedFileCount, project)
+                    copyToClipboard(result.content, result.processedFileCount, project, selectedFiles)
                 }
 
                 logger.info("Action completed: DumpFolderContentsAction")
@@ -95,7 +99,7 @@ class DumpFolderContentsAction : AnAction() {
         })
     }
 
-    private fun copyToClipboard(text: String, fileCount: Int, project: Project?) {
+    private fun copyToClipboard(text: String, fileCount: Int, project: Project?, selectedFiles: Array<VirtualFile>) {
         val charCount = text.length
         val approxTokens = StringUtils.estimateTokensWithSubwordHeuristic(text)
         val sizeInBytes = text.toByteArray(Charsets.UTF_8).size
@@ -118,6 +122,13 @@ class DumpFolderContentsAction : AnAction() {
                 "Copied $fileCount files ($formattedSize, ~$formattedApproxTokens tokens)",
                 NotificationType.INFORMATION
             )
+            
+            // Record in export history
+            project?.let { proj ->
+                val history = ExportHistory.getInstance(proj)
+                val filePaths = selectedFiles.map { it.path }
+                history.addExport(fileCount, sizeInBytes, approxTokens, filePaths)
+            }
         } catch (e: Exception) {
             logger.error("Failed to set clipboard contents", e)
             NotificationUtils.showNotification(
@@ -130,12 +141,23 @@ class DumpFolderContentsAction : AnAction() {
     }
 
     private fun notifyFileLimitReached(limit: Int, project: Project?) {
-        NotificationUtils.showNotification(
-            project,
+        val notification = NotificationUtils.createNotification(
             "File Limit Reached",
             "Processing stopped after reaching the limit of $limit files.",
             NotificationType.WARNING
         )
+        
+        notification.addAction(object : NotificationAction("Open Settings") {
+            override fun actionPerformed(e: AnActionEvent, notification: Notification) {
+                ShowSettingsUtil.getInstance().showSettingsDialog(
+                    project,
+                    "com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceClipboardExportConfigurable"
+                )
+                notification.expire()
+            }
+        })
+        
+        notification.notify(project)
     }
 
     private fun showOperationSummary(
