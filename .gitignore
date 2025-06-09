@@ -5,6 +5,9 @@ gradle/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
+# IntelliJ Platform cache directory - recommended by IntelliJ Platform Gradle Plugin 2.x
+.intellijPlatform
+
 ### IntelliJ IDEA ###
 .idea/modules.xml
 .idea/jarRepositories.xml

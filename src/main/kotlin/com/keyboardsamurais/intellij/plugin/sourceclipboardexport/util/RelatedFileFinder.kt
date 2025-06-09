@@ -2,6 +2,7 @@ package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util
 
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectFileIndex
+import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
@@ -28,8 +29,8 @@ object RelatedFileFinder {
         )
         
         testPatterns.forEach { pattern ->
-            val files = FilenameIndex.getFilesByName(project, pattern, GlobalSearchScope.projectScope(project))
-            testFiles.addAll(files.mapNotNull { it.virtualFile })
+            val files = FilenameIndex.getVirtualFilesByName(pattern, GlobalSearchScope.projectScope(project))
+            testFiles.addAll(files)
         }
         
         return testFiles.distinct()
@@ -37,7 +38,8 @@ object RelatedFileFinder {
     
     fun findConfigFiles(project: Project, sourceFile: VirtualFile): List<VirtualFile> {
         val configFiles = mutableListOf<VirtualFile>()
-        val projectRoot = project.baseDir ?: return emptyList()
+        val projectRootManager = ProjectRootManager.getInstance(project)
+        val projectRoot = projectRootManager.contentRoots.firstOrNull() ?: return emptyList()
         
         // Common config file names
         val configFileNames = listOf(
@@ -141,7 +143,8 @@ object RelatedFileFinder {
     
     private fun extractImportsFromFile(project: Project, psiFile: PsiFile): List<VirtualFile> {
         val imports = mutableListOf<VirtualFile>()
-        val projectRoot = project.baseDir ?: return emptyList()
+        val projectRootManager = ProjectRootManager.getInstance(project)
+        val projectRoot = projectRootManager.contentRoots.firstOrNull() ?: return emptyList()
         val fileText = psiFile.text
         
         // Extract import statements based on file type
@@ -176,7 +179,8 @@ object RelatedFileFinder {
     }
     
     private fun resolveImportToFile(project: Project, sourceFile: VirtualFile, importPath: String): VirtualFile? {
-        val projectRoot = project.baseDir ?: return null
+        val projectRootManager = ProjectRootManager.getInstance(project)
+        val projectRoot = projectRootManager.contentRoots.firstOrNull() ?: return null
         
         // Try different resolution strategies based on import type
         

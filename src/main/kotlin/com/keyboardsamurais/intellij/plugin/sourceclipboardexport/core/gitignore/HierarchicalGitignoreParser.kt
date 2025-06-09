@@ -1,15 +1,17 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.gitignore
 
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.openapi.vfs.VirtualFileEvent
-import com.intellij.openapi.vfs.VirtualFileListener
 import com.intellij.openapi.vfs.VirtualFileManager
-import com.intellij.openapi.vfs.VirtualFileMoveEvent
+import com.intellij.openapi.vfs.newvfs.BulkFileListener
+import com.intellij.openapi.vfs.newvfs.events.VFileContentChangeEvent
+import com.intellij.openapi.vfs.newvfs.events.VFileDeleteEvent
+import com.intellij.openapi.vfs.newvfs.events.VFileEvent
+import com.intellij.openapi.vfs.newvfs.events.VFileMoveEvent
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.FileUtils
 import java.util.concurrent.ConcurrentHashMap
 
@@ -31,56 +33,52 @@ class HierarchicalGitignoreParser(private val project: Project) : Disposable {
     // Repository root for determining the top of the hierarchy
     private val repositoryRoot: VirtualFile? = FileUtils.getRepositoryRoot(project)
 
-    // VFS listener to invalidate cache when .gitignore files change
-    private val vfsListener = object : VirtualFileListener {
-        override fun contentsChanged(event: VirtualFileEvent) {
-            if (event.file.name == ".gitignore") {
-                logger.debug("Gitignore file changed: ${event.file.path}. Invalidating cache entry.")
-                parserCache.remove(event.file.path)
-            }
-        }
-
-        override fun fileDeleted(event: VirtualFileEvent) {
-            if (event.file.name == ".gitignore") {
-                logger.debug("Gitignore file deleted: ${event.file.path}. Invalidating cache entry.")
-                parserCache.remove(event.file.path)
-            }
-        }
-
-        override fun fileMoved(event: VirtualFileMoveEvent) {
-            if (event.file.name == ".gitignore") {
-                val oldPath = event.oldParent.path + "/" + event.file.name
-                logger.debug("Gitignore file moved: ${event.file.path} (from $oldPath). Invalidating cache entries.")
-                parserCache.remove(event.file.path)
-                parserCache.remove(oldPath)
+    // Modern VFS listener using BulkFileListener for message bus
+    private val vfsListener = object : BulkFileListener {
+        override fun after(events: List<VFileEvent>) {
+            events.forEach { event ->
+                val file = event.file
+                if (file?.name == ".gitignore") {
+                    when (event) {
+                        is VFileContentChangeEvent -> {
+                            logger.debug("Gitignore file changed: ${file.path}. Invalidating cache entry.")
+                            parserCache.remove(file.path)
+                        }
+                        is VFileDeleteEvent -> {
+                            logger.debug("Gitignore file deleted: ${file.path}. Invalidating cache entry.")
+                            parserCache.remove(file.path)
+                        }
+                        is VFileMoveEvent -> {
+                            val oldPath = event.oldPath
+                            logger.debug("Gitignore file moved: ${file.path} (from $oldPath). Invalidating cache entries.")
+                            parserCache.remove(file.path)
+                            parserCache.remove(oldPath)
+                        }
+                    }
+                }
             }
         }
     }
 
     init {
         try {
-            // Register the VFS listener
-            VirtualFileManager.getInstance().addVirtualFileListener(vfsListener)
-            // Register this instance for disposal when the project is closed
-            Disposer.register(project, this)
+            // Modern way: Use message bus with disposable connection
+            ApplicationManager.getApplication().messageBus
+                .connect(this)
+                .subscribe(VirtualFileManager.VFS_CHANGES, vfsListener)
+            logger.debug("HierarchicalGitignoreParser initialized with VFS listener via message bus")
         } catch (e: Exception) {
-            // In test environments, the VirtualFileManager service might not be available
-            logger.warn("Could not register VFS listener: ${e.message}")
-            // No need to register for disposal if we couldn't register the listener
+            // In test environments, the message bus might not be available
+            logger.warn("Could not register VFS listener via message bus: ${e.message}")
         }
     }
 
     /**
-     * Disposes this instance by removing the VFS listener.
+     * Disposes this instance. The VFS listener is automatically removed via the disposable connection.
      */
     override fun dispose() {
-        try {
-            VirtualFileManager.getInstance().removeVirtualFileListener(vfsListener)
-            logger.debug("HierarchicalGitignoreParser disposed, VFS listener removed")
-        } catch (e: Exception) {
-            // In test environments, the VirtualFileManager service might not be available
-            logger.warn("Could not remove VFS listener: ${e.message}")
-        }
+        // No need to manually remove listener - disposable connection handles it automatically
+        logger.debug("HierarchicalGitignoreParser disposed, VFS listener automatically removed via disposable connection")
     }
 
     /**
