@@ -16,12 +16,13 @@ repositories {
 
 dependencies {
     implementation("com.knuddels:jtokkit:1.1.0")
-    
+    runtimeOnly("com.knuddels:jtokkit:1.1.0") // Ensure the library is included in the plugin distribution
+
     // IntelliJ Platform dependencies
     intellijPlatform {
         intellijIdeaCommunity("2024.2.4")
         bundledPlugin("com.intellij.java")
-        
+
         pluginVerifier()
         zipSigner()
         instrumentationTools()
@@ -40,26 +41,26 @@ dependencies {
 
 intellijPlatform {
     projectName = "Export Source to Clipboard"
-    
+
     pluginConfiguration {
         version = project.version.toString()
-        
+
         ideaVersion {
             sinceBuild = "242"
             untilBuild = "252.*"
         }
     }
-    
+
     publishing {
         token = providers.environmentVariable("PUBLISH_TOKEN")
     }
-    
+
     signing {
         certificateChain = providers.environmentVariable("CERTIFICATE_CHAIN")
         privateKey = providers.environmentVariable("PRIVATE_KEY")
         password = providers.environmentVariable("PRIVATE_KEY_PASSWORD")
     }
-    
+
     pluginVerification {
         ides {
             recommended()

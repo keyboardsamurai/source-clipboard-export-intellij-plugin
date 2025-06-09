@@ -1,7 +1,10 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util
 
+import com.knuddels.jtokkit.Encodings
+import com.knuddels.jtokkit.api.EncodingType
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
@@ -98,5 +101,38 @@ class StringUtilsTest {
         for (filter in invalidFilters) {
             assertFalse(StringUtils.isValidFilterFormat(filter), "Filter '$filter' should be invalid")
         }
+    }
+
+    /**
+     * Regression test for the jtokkit library integration.
+     * This test verifies that the code can successfully access and use the jtokkit library,
+     * which was previously causing a runtime error: "Failed to fold stack trace: com/knuddels/jtokkit/Encodings"
+     */
+    @Test
+    fun `verify jtokkit library is accessible and working correctly`() {
+        // Directly access the jtokkit library to ensure it's available at runtime
+        val registry = Encodings.newDefaultEncodingRegistry()
+        assertNotNull(registry, "Encoding registry should not be null")
+
+        val encoding = registry.getEncoding(EncodingType.CL100K_BASE)
+        assertNotNull(encoding, "CL100K_BASE encoding should be available")
+
+        // Test a sample stack trace that would be processed by the StackTraceFolder
+        val stackTrace = """
+            java.lang.Exception: Test exception
+                at com.example.TestClass.testMethod(TestClass.java:42)
+                at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+                at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda${'$'}invokeTestMethod${'$'}6(TestMethodTestDescriptor.java:217)
+        """.trimIndent()
+
+        // Use the StringUtils method that internally uses jtokkit
+        val tokenCount = StringUtils.estimateTokensWithSubwordHeuristic(stackTrace)
+
+        // Verify the result is reasonable (greater than 0)
+        assertTrue(tokenCount > 0, "Token count should be greater than 0")
+
+        // Also verify that the direct use of the library gives a similar result
+        val directTokenCount = encoding.countTokens(stackTrace)
+        assertEquals(directTokenCount, tokenCount, "Direct token count should match the utility method result")
     }
 }
