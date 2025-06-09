@@ -4,11 +4,11 @@ import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionToolbar
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.actionSystem.CommonDataKeys
-import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.ui.SimpleToolWindowPanel
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindow
@@ -29,6 +29,8 @@ import kotlinx.coroutines.launch
 import java.awt.BorderLayout
 import java.awt.Component
 import java.awt.FlowLayout
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
 import javax.swing.Box
 import javax.swing.JCheckBox
 import javax.swing.JPanel
@@ -206,7 +208,10 @@ class ExportToolWindow(private val project: Project) : SimpleToolWindowPanel(fal
     private fun refreshFileTree() {
         coroutineScope.launch {
             val root = DefaultMutableTreeNode("Project")
-            project.baseDir?.let { baseDir ->
+            val projectRootManager = ProjectRootManager.getInstance(project)
+            val contentRoots = projectRootManager.contentRoots
+            val baseDir = contentRoots.firstOrNull()
+            if (baseDir != null) {
                 addFilesToTree(root, baseDir)
             }
             
@@ -251,7 +256,7 @@ class ExportToolWindow(private val project: Project) : SimpleToolWindowPanel(fal
                 override fun pushState() {}
                 override fun popState() {}
                 override fun isModal() = false
-                override fun getModalityState() = com.intellij.openapi.application.ModalityState.NON_MODAL
+                override fun getModalityState() = ModalityState.nonModal()
                 override fun setModalityProgress(modalityProgress: com.intellij.openapi.progress.ProgressIndicator?) {}
                 override fun isIndeterminate() = false
                 override fun setIndeterminate(indeterminate: Boolean) {}
@@ -282,20 +287,39 @@ class ExportToolWindow(private val project: Project) : SimpleToolWindowPanel(fal
     private fun exportSelected() {
         if (selectedFiles.isEmpty()) return
         
-        // Trigger the main export action with selected files
-        val action = ActionManager.getInstance().getAction("SourceClipboardExport.DumpFolderContents")
-        val event = AnActionEvent.createFromDataContext(
-            "ExportToolWindow",
-            null,
-            DataContext { dataId ->
-                when (dataId) {
-                    CommonDataKeys.PROJECT.name -> project
-                    CommonDataKeys.VIRTUAL_FILE_ARRAY.name -> selectedFiles.toTypedArray()
-                    else -> null
-                }
+        coroutineScope.launch {
+            val settings = SourceClipboardExportSettings.getInstance().state
+            val mockIndicator = object : com.intellij.openapi.progress.ProgressIndicator {
+                override fun start() {}
+                override fun stop() {}
+                override fun isRunning() = true
+                override fun cancel() {}
+                override fun isCanceled() = false
+                override fun setText(text: String?) {}
+                override fun getText() = ""
+                override fun setText2(text: String?) {}
+                override fun getText2() = ""
+                override fun getFraction() = 0.0
+                override fun setFraction(fraction: Double) {}
+                override fun pushState() {}
+                override fun popState() {}
+                override fun isModal() = false
+                override fun getModalityState() = ModalityState.nonModal()
+                override fun setModalityProgress(modalityProgress: com.intellij.openapi.progress.ProgressIndicator?) {}
+                override fun isIndeterminate() = false
+                override fun setIndeterminate(indeterminate: Boolean) {}
+                override fun checkCanceled() {}
+                override fun isPopupWasShown() = false
+                override fun isShowing() = false
             }
-        )
-        action.actionPerformed(event)
+            
+            val exporter = SourceExporter(project, settings, mockIndicator)
+            val result = exporter.exportSources(selectedFiles.toTypedArray())
+            
+            val stringSelection = StringSelection(result.content)
+            val toolkit = Toolkit.getDefaultToolkit()
+            toolkit.systemClipboard.setContents(stringSelection, null)
+        }
     }
 
     private fun clearSelection() {

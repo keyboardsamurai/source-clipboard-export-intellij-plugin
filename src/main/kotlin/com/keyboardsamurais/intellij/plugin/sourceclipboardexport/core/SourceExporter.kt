@@ -42,6 +42,8 @@ class SourceExporter(
     private val excludedByGitignoreCount = AtomicInteger(0)
     private val excludedExtensions = Collections.synchronizedSet(mutableSetOf<String>())
 
+    // Thread-safe counter for generating unique task identifiers
+    private val taskCounter = AtomicInteger(0)
 
     // Store the hierarchical gitignore parser instance
     private val hierarchicalGitignoreParser = HierarchicalGitignoreParser(project)
@@ -108,8 +110,9 @@ class SourceExporter(
                     ensureActive()
                     // Create a local buffer for this coroutine
                     val localBuffer = mutableListOf<String>()
-                    // Store the buffer in the map using the coroutine ID as the key
-                    localBuffers[Thread.currentThread().id] = localBuffer
+                    // Store the buffer in the map using a unique task ID as the key
+                    val taskId = taskCounter.incrementAndGet().toLong()
+                    localBuffers[taskId] = localBuffer
                     // Process the file with the local buffer
                     processEntry(file, this, localBuffer)
                 }
