@@ -6,20 +6,23 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 
-class SmartExportGroup : ActionGroup("Export Related Files", "Smart export with related files", null) {
+class SmartExportGroup : ActionGroup("Export with Context", "Smart export with related files", null) {
+    
+    init {
+        templatePresentation.setPopupGroup(true)
+    }
     
     override fun getChildren(e: AnActionEvent?): Array<AnAction> {
         return arrayOf(
             ExportWithTestsAction(),
             ExportWithConfigsAction(),
             ExportRecentChangesAction(),
+            ExportLastCommitAction(),
             ExportCurrentPackageAction(),
             ExportWithDirectImportsAction(),
             ExportWithTransitiveImportsAction()
         )
     }
-    
-    override fun isPopup(): Boolean = true
     
     override fun update(e: AnActionEvent) {
         val project = e.project

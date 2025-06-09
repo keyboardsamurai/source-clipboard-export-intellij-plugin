@@ -8,7 +8,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.vfs.VirtualFile
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.RelatedFileFinder
 
-class ExportWithTransitiveImportsAction : AnAction("Export with Transitive Imports", "Export selected files along with all their transitive imports from the same project", null) {
+class ExportWithTransitiveImportsAction : AnAction("Include All Dependencies", "Export selected files with all dependencies", null) {
     
     private val logger = Logger.getInstance(ExportWithTransitiveImportsAction::class.java)
     

@@ -8,7 +8,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.vfs.VirtualFile
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.RelatedFileFinder
 
-class ExportCurrentPackageAction : AnAction("Export Current Package/Module", "Export all files in the same package or directory", null) {
+class ExportCurrentPackageAction : AnAction("Include Package Files", "Export all files in the same package", null) {
     
     private val logger = Logger.getInstance(ExportCurrentPackageAction::class.java)
     

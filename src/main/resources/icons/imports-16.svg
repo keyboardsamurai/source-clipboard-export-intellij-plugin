@@ -1,0 +1,19 @@
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Imports icon - connected nodes -->
+  <defs>
+    <style>
+      .icon-color { fill: #6C707E; }
+      @media (prefers-color-scheme: dark) {
+        .icon-color { fill: #AFB1B3; }
+      }
+    </style>
+  </defs>
+  <!-- Connection lines -->
+  <path d="M4 4L8 8M8 8L12 4M8 8L12 12M8 8L4 12" stroke="currentColor" stroke-width="1" stroke-linecap="round" class="icon-color"/>
+  <!-- Nodes -->
+  <circle cx="4" cy="4" r="1.5" fill="currentColor" class="icon-color"/>
+  <circle cx="12" cy="4" r="1.5" fill="currentColor" class="icon-color"/>
+  <circle cx="8" cy="8" r="1.5" fill="currentColor" class="icon-color"/>
+  <circle cx="4" cy="12" r="1.5" fill="currentColor" class="icon-color"/>
+  <circle cx="12" cy="12" r="1.5" fill="currentColor" class="icon-color"/>
+</svg>

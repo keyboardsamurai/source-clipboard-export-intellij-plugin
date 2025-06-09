@@ -68,9 +68,10 @@
                     <li><b>Export with Tests:</b> Automatically includes related test files for your selection</li>
                     <li><b>Export with Configs:</b> Includes relevant configuration files (pom.xml, package.json, etc.)</li>
                     <li><b>Export Recent Changes:</b> Exports files modified in the last 24 hours</li>
+                    <li><b>Export Last Commit Files:</b> Exports all files changed in the most recent Git commit</li>
                     <li><b>Export with Direct Imports:</b> Includes all directly imported files from the same project</li>
                     <li><b>Export with Transitive Imports:</b> Includes all direct and transitive dependencies</li>
-                    <li>All accessible via right-click context menu under "Export Related Files"</li>
+                    <li>All accessible via right-click context menu under "Export with Context"</li>
                 </ul>
             </li>
             <li><b>📝 Export History:</b> Track and revisit your export workflow:
@@ -136,40 +137,50 @@
     </extensions>
 
     <actions>
-        <action id="SourceClipboardExport.DumpFolderContents"
-                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.DumpFolderContentsAction"
-                text="Export Files/Folders to Clipboard"
-                description="Export source code and file paths to clipboard">
+        <!-- Main Export Group - Streamlined single menu -->
+        <group id="SourceClipboardExport.MainGroup"
+               text="Export Source"
+               description="Export source code to clipboard"
+               popup="true">
             <add-to-group group-id="ProjectViewPopupMenu" />
-            <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift C"/>
-            <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift C"/>
-            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta shift C"/>
-        </action>
-        <action id="SourceClipboardExport.ToggleFilters"
-                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ToggleFiltersAction"
-                text="Toggle Filters"
-                description="Toggle file extension filters on/off">
-            <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="SourceClipboardExport.DumpFolderContents"/>
-            <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift alt C"/>
-            <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift alt C"/>
-            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta shift alt C"/>
-        </action>
-        
-        <!-- Smart Export Group -->
-        <group id="SourceClipboardExport.SmartExportGroup"
-               class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.SmartExportGroup"
-               text="Export Related Files"
-               description="Smart export with related files">
-            <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="SourceClipboardExport.ToggleFilters"/>
+            
+            <!-- Primary export action -->
+            <action id="SourceClipboardExport.DumpFolderContents"
+                    class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.DumpFolderContentsAction"
+                    text="Export Selected Files"
+                    description="Export source code and file paths to clipboard">
+                <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift C"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift C"/>
+                <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta shift C"/>
+            </action>
+            
+            <separator/>
+            
+            <!-- Smart Export Group - now inline for better UX -->
+            <group id="SourceClipboardExport.SmartExportGroup"
+                   class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.SmartExportGroup"
+                   text="Export with Context"
+                   description="Smart export with related files">
+            </group>
+            
+            <separator/>
+            
+            <!-- Export Diff Action -->
+            <action id="SourceClipboardExport.ExportDiff"
+                    class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportDiffAction"
+                    text="Compare with Last Export"
+                    description="Show differences from last export"/>
+            
+            <!-- Toggle Filters - moved to bottom, less prominent -->
+            <action id="SourceClipboardExport.ToggleFilters"
+                    class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ToggleFiltersAction"
+                    text="Toggle File Filters"
+                    description="Toggle file extension filters on/off">
+                <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift alt C"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift alt C"/>
+                <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta shift alt C"/>
+            </action>
         </group>
-        
-        <!-- Export Diff Action -->
-        <action id="SourceClipboardExport.ExportDiff"
-                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportDiffAction"
-                text="Export Diff"
-                description="Show differences from last export">
-            <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="SourceClipboardExport.SmartExportGroup"/>
-        </action>
 
         <!-- New Action for Folding Stack Traces -->
         <action id="SourceClipboardExport.FoldAndCopyStackTrace"

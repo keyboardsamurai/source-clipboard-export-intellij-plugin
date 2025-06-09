@@ -1,0 +1,15 @@
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Config icon - gear/settings -->
+  <defs>
+    <style>
+      .icon-color { fill: #6C707E; }
+      @media (prefers-color-scheme: dark) {
+        .icon-color { fill: #AFB1B3; }
+      }
+    </style>
+  </defs>
+  <!-- Gear shape -->
+  <path d="M8 1L9.5 3L12 2.5L12.5 5L15 6L13.5 8L15 10L12.5 11L12 13.5L9.5 13L8 15L6.5 13L4 13.5L3.5 11L1 10L2.5 8L1 6L3.5 5L4 2.5L6.5 3L8 1Z" stroke="currentColor" stroke-width="1" fill="none" stroke-linejoin="round" class="icon-color"/>
+  <!-- Center circle -->
+  <circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1" fill="none" class="icon-color"/>
+</svg>

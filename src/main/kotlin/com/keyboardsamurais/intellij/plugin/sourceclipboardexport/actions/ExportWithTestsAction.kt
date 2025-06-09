@@ -8,7 +8,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.vfs.VirtualFile
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.RelatedFileFinder
 
-class ExportWithTestsAction : AnAction("Export with Tests", "Export selected files along with their corresponding test files", null) {
+class ExportWithTestsAction : AnAction("Include Tests", "Export selected files with their test files", null) {
     
     private val logger = Logger.getInstance(ExportWithTestsAction::class.java)
     
