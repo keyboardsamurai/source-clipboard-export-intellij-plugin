@@ -1,0 +1,16 @@
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Basic export icon - simple arrow pointing to clipboard -->
+  <defs>
+    <style>
+      .icon-color { fill: #6C707E; }
+      @media (prefers-color-scheme: dark) {
+        .icon-color { fill: #AFB1B3; }
+      }
+    </style>
+  </defs>
+  <!-- Clipboard -->
+  <rect x="8" y="3" width="6" height="9" rx="0.5" stroke="currentColor" stroke-width="1" fill="none" class="icon-color"/>
+  <rect x="9.5" y="2" width="3" height="1.5" rx="0.25" fill="currentColor" class="icon-color"/>
+  <!-- Arrow pointing to clipboard -->
+  <path d="M2 8H7M5 6L7 8L5 10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" class="icon-color"/>
+</svg>

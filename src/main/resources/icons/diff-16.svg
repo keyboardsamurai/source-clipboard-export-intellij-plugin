@@ -1,0 +1,22 @@
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Diff icon - side by side comparison -->
+  <defs>
+    <style>
+      .icon-color { fill: #6C707E; }
+      @media (prefers-color-scheme: dark) {
+        .icon-color { fill: #AFB1B3; }
+      }
+    </style>
+  </defs>
+  <!-- Left panel -->
+  <rect x="1" y="2" width="6" height="12" rx="0.5" stroke="currentColor" stroke-width="1" fill="none" class="icon-color"/>
+  <!-- Right panel -->
+  <rect x="9" y="2" width="6" height="12" rx="0.5" stroke="currentColor" stroke-width="1" fill="none" class="icon-color"/>
+  <!-- Comparison arrows -->
+  <path d="M7.5 6L8.5 6M7.5 8L8.5 8M7.5 10L8.5 10" stroke="currentColor" stroke-width="1" stroke-linecap="round" class="icon-color"/>
+  <!-- Content lines -->
+  <line x1="2.5" y1="4" x2="5.5" y2="4" stroke="currentColor" stroke-width="0.8" class="icon-color"/>
+  <line x1="2.5" y1="6" x2="6" y2="6" stroke="currentColor" stroke-width="0.8" class="icon-color"/>
+  <line x1="10.5" y1="4" x2="13.5" y2="4" stroke="currentColor" stroke-width="0.8" class="icon-color"/>
+  <line x1="10.5" y1="6" x2="14" y2="6" stroke="currentColor" stroke-width="0.8" class="icon-color"/>
+</svg>

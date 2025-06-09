@@ -1,0 +1,16 @@
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Filter icon - funnel shape -->
+  <defs>
+    <style>
+      .icon-color { fill: #6C707E; }
+      @media (prefers-color-scheme: dark) {
+        .icon-color { fill: #AFB1B3; }
+      }
+    </style>
+  </defs>
+  <!-- Funnel shape -->
+  <path d="M2 4H14L10 8V12L6 14V8L2 4Z" stroke="currentColor" stroke-width="1" fill="none" stroke-linejoin="round" class="icon-color"/>
+  <!-- Filter lines -->
+  <line x1="4" y1="4" x2="12" y2="4" stroke="currentColor" stroke-width="1" class="icon-color"/>
+  <line x1="6" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1" class="icon-color"/>
+</svg>

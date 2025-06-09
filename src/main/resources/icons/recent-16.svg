@@ -1,0 +1,20 @@
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Recent icon - clock -->
+  <defs>
+    <style>
+      .icon-color { fill: #6C707E; }
+      @media (prefers-color-scheme: dark) {
+        .icon-color { fill: #AFB1B3; }
+      }
+    </style>
+  </defs>
+  <!-- Clock circle -->
+  <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1" fill="none" class="icon-color"/>
+  <!-- Clock hands -->
+  <path d="M8 4V8L11 11" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" class="icon-color"/>
+  <!-- Clock markers -->
+  <circle cx="8" cy="3" r="0.5" fill="currentColor" class="icon-color"/>
+  <circle cx="13" cy="8" r="0.5" fill="currentColor" class="icon-color"/>
+  <circle cx="8" cy="13" r="0.5" fill="currentColor" class="icon-color"/>
+  <circle cx="3" cy="8" r="0.5" fill="currentColor" class="icon-color"/>
+</svg>

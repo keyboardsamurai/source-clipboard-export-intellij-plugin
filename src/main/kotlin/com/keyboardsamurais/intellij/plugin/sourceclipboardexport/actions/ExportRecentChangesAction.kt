@@ -6,7 +6,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.diagnostic.Logger
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.RelatedFileFinder
 
-class ExportRecentChangesAction : AnAction("Export Recent Changes", "Export files modified in the last 24 hours", null) {
+class ExportRecentChangesAction : AnAction("Recent Changes", "Export files modified in the last 24 hours", null) {
     
     private val logger = Logger.getInstance(ExportRecentChangesAction::class.java)
     
