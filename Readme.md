@@ -25,6 +25,13 @@ Sharing precise code snippets along with their paths accelerates understanding a
 * **🔔 Real-time Feedback:** Receive clear, intuitive notifications on export status, processed files, and any exclusions.
 * **🛠️ IntelliJ Integrated:** Seamlessly fits into your existing IntelliJ workflow using familiar interfaces and interactions.
 
+#### 🎯 Smart Export Actions
+
+* **🔄 Export Dependents:** Find and export files that import or depend on your selected files - perfect for impact analysis.
+* **🏗️ Export Implementations:** Export all implementations of interfaces and subclasses - ideal for understanding polymorphic behavior.
+* **🎨 Export Templates & Styles:** Automatically include related HTML, CSS, and resource files - great for full-stack development.
+* **🧪 Export All Tests:** Export comprehensive test coverage including unit, integration, E2E tests, and test resources.
+
 ---
 
 ### 🧑‍💻 How to Get Started
@@ -45,7 +52,13 @@ Sharing precise code snippets along with their paths accelerates understanding a
 **3. Export Your Source**
 
 * Right-click a file or directory in your Project View.
-* Choose "Export Source to Clipboard" and your snippet is ready!
+* Choose from the "Export Source" menu:
+  * **Export Selected Files** - Export exactly what you've selected
+  * **Export with Context** - Choose from smart export options:
+    * **Dependencies** → Direct Imports, Transitive Imports, or Dependents
+    * **Code Structure** → Tests, Implementations/Subclasses, or Package Files
+    * **Related Resources** → Configuration Files, Templates & Styles, or All Tests
+    * **Version History** → Recent Changes or Last Commit Files
 
 **4. Paste and Go!**
 
@@ -54,6 +67,28 @@ Sharing precise code snippets along with their paths accelerates understanding a
 ---
 
 ### 🚧 What's New?
+
+#### Version 2.0 – Smart Export Actions & Enhanced Menu Structure 🎯
+
+* **🎯 Smart Export Actions:** New context-aware export options organized in logical groups:
+  * **Dependencies:** Export Direct Imports, Transitive Imports, or find Dependents (reverse dependencies)
+  * **Code Structure:** Export Tests, Implementations/Subclasses, or Current Package
+  * **Related Resources:** Export Configuration Files, Templates & Styles, or All Related Tests
+  * **Version History:** Export Recent Changes or Last Commit Files
+* **🌍 Enhanced Multi-Language Support:** Full TypeScript, JavaScript, React, and Next.js support across all smart export actions with comprehensive test pattern detection and modern framework awareness
+* **🔄 Export Dependents:** Revolutionary reverse dependency finder - discover what files depend on your selection
+* **🏗️ Export Implementations:** Find all implementations of interfaces and subclasses with intelligent filtering
+* **🎨 Export Templates & Styles:** Framework-aware resource detection for Spring, React, Vue, Angular, and more
+* **🧪 Export All Tests:** Comprehensive test discovery including unit, integration, E2E, performance tests, and test resources
+
+Small improvements
+
+* **📋 Organized Menu Structure:** Intuitive hierarchical menu organization with logical grouping and separators
+* **⌨️ Keyboard Shortcuts:** Quick access with Ctrl+Shift+C (Export) and Ctrl+Shift+Alt+C (Toggle Filters)
+* **🎯 Smarter Defaults:** Better out-of-box experience with increased limits and sensible defaults
+* **🖥️ Quick Export Tool Window:** Optional visual interface with file tree and real-time preview
+* **📝 Export History:** Track your last 10 exports with diff comparison capabilities
+* **📊 Enhanced Notifications:** Comprehensive export feedback with file count, size, and token estimates
 
 #### Version 1.7 – Enhanced Stack Traces & Gitignore Magic ✨
 

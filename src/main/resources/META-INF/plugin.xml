@@ -39,8 +39,47 @@
 ]]></description>
 
     <change-notes><![CDATA[
-        <h3>Version 1.8 – Enhanced User Experience 🎯</h3>
+        <h3>Version 2.0 – Smart Export Actions & Enhanced Menu Structure 🎯</h3>
         <ul>
+            <li><b>🎯 Smart Export Actions:</b> New context-aware export options organized in logical groups:
+                <ul>
+                    <li><b>Dependencies:</b> Export Direct Imports, Transitive Imports, or find Dependents (reverse dependencies)</li>
+                    <li><b>Code Structure:</b> Export Tests, Implementations/Subclasses, or Current Package</li>
+                    <li><b>Related Resources:</b> Export Configuration Files, Templates & Styles, or All Related Tests</li>
+                    <li><b>Version History:</b> Export Recent Changes or Last Commit Files</li>
+                </ul>
+            </li>
+            <li><b>🌍 Enhanced Multi-Language Support:</b> Full TypeScript, JavaScript, React, and Next.js support across all smart export actions with comprehensive test pattern detection and modern framework awareness</li>
+            <li><b>🔄 Export Dependents:</b> Revolutionary reverse dependency finder - discover what files depend on your selection:
+                <ul>
+                    <li>Perfect for impact analysis before refactoring</li>
+                    <li>Supports Java, Kotlin, JavaScript, TypeScript, and Python</li>
+                    <li>Uses IntelliJ's powerful reference search capabilities</li>
+                </ul>
+            </li>
+            <li><b>🏗️ Export Implementations:</b> Find all implementations of interfaces and subclasses:
+                <ul>
+                    <li>Ideal for understanding polymorphic behavior</li>
+                    <li>Includes anonymous inner classes</li>
+                    <li>Provides helpful statistics about found implementations</li>
+                </ul>
+            </li>
+            <li><b>🎨 Export Templates & Styles:</b> Framework-aware resource detection:
+                <ul>
+                    <li>Automatic detection for Spring MVC, React, Vue, and Angular</li>
+                    <li>Finds related HTML, CSS, and resource files</li>
+                    <li>Pattern matching and string literal analysis</li>
+                </ul>
+            </li>
+            <li><b>🧪 Export All Tests:</b> Comprehensive test discovery:
+                <ul>
+                    <li>Finds unit, integration, E2E, and performance tests</li>
+                    <li>Includes test resources and fixtures</li>
+                    <li>Discovers test utilities and helpers</li>
+                    <li>Categorizes tests for clear reporting</li>
+                </ul>
+            </li>
+            <li><b>📋 Organized Menu Structure:</b> Intuitive hierarchical menu organization with logical grouping and visual separators for better discoverability</li>
             <li><b>⌨️ Keyboard Shortcuts:</b> Added convenient keyboard shortcuts for quick access:
                 <ul>
                     <li><code>Ctrl+Shift+C</code> (Windows/Linux) or <code>Cmd+Shift+C</code> (Mac) - Export Files/Folders to Clipboard</li>
