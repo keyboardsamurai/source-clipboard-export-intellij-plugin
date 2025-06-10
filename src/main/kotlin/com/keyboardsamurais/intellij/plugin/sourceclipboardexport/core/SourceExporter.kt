@@ -12,6 +12,7 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.StringUti
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
@@ -86,6 +87,7 @@ class SourceExporter(
     }
 
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     suspend fun exportSources(selectedFiles: Array<VirtualFile>): ExportResult {
         logger.info("Starting source export process.")
         logger.info("Settings: Max Files=${settings.fileCount}, Max Size KB=${settings.maxFileSizeKb}, Filters Enabled=${settings.areFiltersEnabled}, Filters=${settings.filenameFilters.joinToString()}, Ignored=${settings.ignoredNames.joinToString()}, Include Prefix=${settings.includePathPrefix}, Include Line Numbers=${settings.includeLineNumbers}")

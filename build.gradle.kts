@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.keyboardsamurais.intellij.plugin"
-version = "1.7"
+version = "2.0"
 
 repositories {
     mavenCentral()
@@ -22,6 +22,7 @@ dependencies {
     intellijPlatform {
         intellijIdeaCommunity("2024.2.4")
         bundledPlugin("com.intellij.java")
+        bundledPlugin("org.jetbrains.kotlin")
 
         pluginVerifier()
         zipSigner()
