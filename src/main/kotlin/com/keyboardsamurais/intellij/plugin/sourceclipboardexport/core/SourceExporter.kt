@@ -1,5 +1,6 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core
 
+import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
@@ -253,6 +254,38 @@ class SourceExporter(
     }
 
     /**
+     * Data class to hold file properties read within a read action
+     */
+    private data class FileProperties(
+        val name: String,
+        val path: String,
+        val isDirectory: Boolean,
+        val isValid: Boolean,
+        val exists: Boolean,
+        val length: Long,
+        val extension: String?,
+        val children: Array<VirtualFile>?
+    )
+
+    /**
+     * Safely reads VirtualFile properties within a read action
+     */
+    private fun readFileProperties(file: VirtualFile): FileProperties {
+        return ReadAction.compute<FileProperties, Exception> {
+            FileProperties(
+                name = file.name,
+                path = file.path,
+                isDirectory = file.isDirectory,
+                isValid = file.isValid,
+                exists = file.exists(),
+                length = file.length,
+                extension = file.extension,
+                children = if (file.isDirectory) file.children else null
+            )
+        }
+    }
+
+    /**
      * Processes a single entry (file or directory), performing all exclusion checks.
      * This function is recursive for directories.
      *
@@ -265,11 +298,15 @@ class SourceExporter(
 
         // --- Basic Checks ---
         if (fileCount.get() >= settings.fileCount) {
-            logger.debug("File limit reached before processing entry: ${file.path}. Skipping.")
+            logger.debug("File limit reached before processing entry. Skipping.")
             return
         }
-        if (!file.isValid || !file.exists()) {
-            logger.warn("Skipping invalid or non-existent file entry: ${file.path}")
+        
+        // Read file properties within a read action
+        val fileProps = readFileProperties(file)
+        
+        if (!fileProps.isValid || !fileProps.exists) {
+            logger.warn("Skipping invalid or non-existent file entry: ${fileProps.path}")
             return
         }
 
@@ -278,14 +315,16 @@ class SourceExporter(
 
         // --- Calculate Relative Path (relative to project root for the single parser) ---
         val relativePath = try {
-            FileUtils.getRelativePath(file, project) // Assumes this gives path relative to project root
+            ReadAction.compute<String?, Exception> {
+                FileUtils.getRelativePath(file, project) // Assumes this gives path relative to project root
+            }
         } catch (e: Exception) {
-            logger.error("Error calculating relative path for: ${file.path}", e)
+            logger.error("Error calculating relative path for: ${fileProps.path}", e)
             null // Handle error case
         }
 
         if (relativePath == null) {
-            logger.warn("Could not determine relative path for ${file.path}. Skipping gitignore check.")
+            logger.warn("Could not determine relative path for ${fileProps.path}. Skipping gitignore check.")
             // Decide whether to proceed without gitignore check or skip entirely
             // Let's proceed for now, but log it clearly.
         }
@@ -294,15 +333,15 @@ class SourceExporter(
         scope.ensureActive()
 
         // --- Logging for Gitignore Debugging ---
-        logger.info("Processing entry: '${file.name}' | Relative Path: '$relativePath' | isDirectory: ${file.isDirectory}")
+        logger.info("Processing entry: '${fileProps.name}' | Relative Path: '$relativePath' | isDirectory: ${fileProps.isDirectory}")
         // --- End Logging ---
 
 
         // --- Exclusion Checks ---
 
         // 1. Explicit Ignored Names (Fastest check)
-        if (file.name in settings.ignoredNames) {
-            logger.info("Skipping ignored file/directory by name: ${file.path}")
+        if (fileProps.name in settings.ignoredNames) {
+            logger.info("Skipping ignored file/directory by name: ${fileProps.path}")
             excludedByIgnoredNameCount.incrementAndGet()
             return
         }
@@ -312,30 +351,32 @@ class SourceExporter(
 
         // 2. Gitignore Check (using hierarchical parser)
         try {
-            val isIgnoredByGit = hierarchicalGitignoreParser.isIgnored(file)
+            val isIgnoredByGit = ReadAction.compute<Boolean, Exception> {
+                hierarchicalGitignoreParser.isIgnored(file)
+            }
             if (isIgnoredByGit) {
-                logger.info(">>> Gitignore Match: YES. Skipping '${file.path}' based on hierarchical .gitignore rules.")
+                logger.info(">>> Gitignore Match: YES. Skipping '${fileProps.path}' based on hierarchical .gitignore rules.")
                 excludedByGitignoreCount.incrementAndGet()
                 return // Skip this entry entirely
             } else {
-                logger.info(">>> Gitignore Match: NO. Proceeding with '${file.path}'.")
+                logger.info(">>> Gitignore Match: NO. Proceeding with '${fileProps.path}'.")
             }
         } catch (e: Exception) {
-            logger.warn(">>> Gitignore Check: ERROR checking status for '${file.path}'. File will be processed.", e)
+            logger.warn(">>> Gitignore Check: ERROR checking status for '${fileProps.path}'. File will be processed.", e)
         }
 
         // Check cancellation again after gitignore check
         scope.ensureActive()
 
         // --- Process Valid, Non-Ignored Entry ---
-        if (file.isDirectory) {
+        if (fileProps.isDirectory) {
             // Process directory contents recursively
-            logger.debug("Processing directory contents: ${file.path}")
-            processDirectoryChildren(file, scope, localBuffer)
+            logger.debug("Processing directory contents: ${fileProps.path}")
+            processDirectoryChildren(file, fileProps, scope, localBuffer)
         } else {
             // Process a single file (pass the already calculated relative path)
-            logger.debug("Processing file: ${file.path}")
-            processSingleFile(file, relativePath ?: file.name, scope, localBuffer) // Pass relative path or fallback
+            logger.debug("Processing file: ${fileProps.path}")
+            processSingleFile(file, fileProps, relativePath ?: fileProps.name, scope, localBuffer) // Pass relative path or fallback
         }
     }
 
@@ -343,25 +384,19 @@ class SourceExporter(
      * Iterates over directory children and calls processEntry for each.
      * 
      * @param directory The directory to process.
+     * @param dirProps The pre-read directory properties.
      * @param scope The coroutine scope.
      * @param localBuffer The local buffer to add file contents to.
      */
-    /**
-     * Iterates over directory children and calls processEntry for each.
-     * 
-     * @param directory The directory to process.
-     * @param scope The coroutine scope.
-     * @param localBuffer The local buffer to add file contents to.
-     */
-    private suspend fun processDirectoryChildren(directory: VirtualFile, scope: CoroutineScope, localBuffer: MutableList<String>) {
+    private suspend fun processDirectoryChildren(directory: VirtualFile, dirProps: FileProperties, scope: CoroutineScope, localBuffer: MutableList<String>) {
         try {
-            val children = directory.children ?: return // No children or error reading them
+            val children = dirProps.children ?: return // No children or error reading them
             for (child in children) {
                 scope.ensureActive() // Check cancellation before processing each child
 
                 // Check limit again before launching recursive call
                 if (fileCount.get() >= settings.fileCount) {
-                    logger.debug("File limit reached within directory ${directory.path}. Stopping recursion.")
+                    logger.debug("File limit reached within directory ${dirProps.path}. Stopping recursion.")
                     return // Stop processing this directory further
                 }
 
@@ -372,10 +407,10 @@ class SourceExporter(
                 scope.ensureActive()
             }
         } catch (ce: CancellationException) {
-            logger.info("Directory processing cancelled: ${directory.path}")
+            logger.info("Directory processing cancelled: ${dirProps.path}")
             throw ce // Re-throw cancellation to propagate up
         } catch (e: Exception) {
-            logger.error("Error processing directory children: ${directory.path}", e)
+            logger.error("Error processing directory children: ${dirProps.path}", e)
         }
     }
 
@@ -383,30 +418,31 @@ class SourceExporter(
      * Processes a single file after basic ignore checks have passed.
      * Performs size, binary, filter checks, reads content, and adds to results.
      * @param file The file VirtualFile.
+     * @param fileProps The pre-read file properties.
      * @param relativePath The pre-calculated relative path (or fallback).
      * @param scope The coroutine scope.
      * @param localBuffer The local buffer to add file contents to.
      */
-    private suspend fun processSingleFile(file: VirtualFile, relativePath: String, scope: CoroutineScope, localBuffer: MutableList<String>) {
+    private suspend fun processSingleFile(file: VirtualFile, fileProps: FileProperties, relativePath: String, scope: CoroutineScope, localBuffer: MutableList<String>) {
         // Note: .gitignore and ignoredNames checks are done in processEntry
 
         scope.ensureActive() // Check cancellation
 
         // Check file limit again before doing expensive checks/reads
         if (fileCount.get() >= settings.fileCount) {
-            logger.warn("File limit reached just before processing file details: ${file.name}. Skipping.")
+            logger.warn("File limit reached just before processing file details: ${fileProps.name}. Skipping.")
             return
         }
 
         // --- Further Exclusion Checks (Size, Binary, Filter) ---
-        if (FileUtils.isKnownBinaryExtension(file)) {
+        if (ReadAction.compute<Boolean, Exception> { FileUtils.isKnownBinaryExtension(file) }) {
             logger.info("Skipping known binary file type: $relativePath")
             excludedByBinaryContentCount.incrementAndGet()
             return
         }
 
         val maxSizeInBytes = settings.maxFileSizeKb * 1024L
-        if (file.length > maxSizeInBytes) {
+        if (fileProps.length > maxSizeInBytes) {
             logger.info("Skipping file due to size limit (> ${settings.maxFileSizeKb} KB): $relativePath")
             excludedBySizeCount.incrementAndGet()
             return
@@ -414,7 +450,9 @@ class SourceExporter(
 
         // Deeper binary check
         val isBinary = try {
-            FileUtils.isLikelyBinaryContent(file)
+            ReadAction.compute<Boolean, Exception> {
+                FileUtils.isLikelyBinaryContent(file)
+            }
         } catch (e: Exception) {
             logger.warn("Failed deep binary check for $relativePath, assuming binary.", e)
             true // Assume binary if check fails
@@ -430,11 +468,11 @@ class SourceExporter(
         if (settings.areFiltersEnabled && settings.filenameFilters.isNotEmpty()) {
             val matchesFilter = settings.filenameFilters.any { filter ->
                 val actualFilter = if (filter.startsWith(".")) filter else ".$filter"
-                file.name.endsWith(actualFilter, ignoreCase = true)
+                fileProps.name.endsWith(actualFilter, ignoreCase = true)
             }
             if (!matchesFilter) {
                 logger.info("Skipping file due to filename filter: $relativePath")
-                val fileExtension = file.extension ?: "no_extension"
+                val fileExtension = fileProps.extension ?: "no_extension"
                 excludedExtensions.add(fileExtension)
                 excludedByFilterCount.incrementAndGet()
                 return
@@ -444,10 +482,12 @@ class SourceExporter(
         // --- Read File Content ---
         scope.ensureActive() // Check cancellation before reading content
         var fileContent = try {
-            FileUtils.readFileContent(file)
+            ReadAction.compute<String, Exception> {
+                FileUtils.readFileContent(file)
+            }
         } catch (e: Exception) {
             logger.error("Error reading file content for $relativePath", e)
-            "// Error reading file: ${file.path} (${e.message})" // Indicate error in output
+            "// Error reading file: ${fileProps.path} (${e.message})" // Indicate error in output
         }
 
         // Add line numbers if enabled
@@ -473,7 +513,9 @@ class SourceExporter(
                     fileContent
                 } else {
                     // Get the appropriate comment prefix for this file type
-                    val commentPrefix = FileUtils.getCommentPrefix(file)
+                    val commentPrefix = ReadAction.compute<String, Exception> {
+                        FileUtils.getCommentPrefix(file)
+                    }
                     // For HTML-style comments, insert the path before the closing tag
                     val formattedPrefix = if (commentPrefix.endsWith("-->")) {
                         commentPrefix.replace("-->", "$relativePath -->")
