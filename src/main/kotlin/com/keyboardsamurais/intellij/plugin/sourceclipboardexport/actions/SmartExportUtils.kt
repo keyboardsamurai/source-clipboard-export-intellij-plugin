@@ -7,66 +7,50 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceClipboardExportSettings
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.SourceExporter
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 
 object SmartExportUtils {
     
-    private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    
     fun exportFiles(project: Project, files: Array<VirtualFile>) {
-        // Modern approach: Use SourceExporter directly instead of deprecated action invocation
-        coroutineScope.launch {
+        // Run the export process with a progress indicator
+        ProgressManager.getInstance().runProcessWithProgressSynchronously({
             try {
                 val settings = SourceClipboardExportSettings.getInstance().state
+                val progressIndicator = ProgressManager.getInstance().progressIndicator
+                val exporter = SourceExporter(project, settings, progressIndicator)
                 
-                // Run with progress indicator
-                ProgressManager.getInstance().runProcessWithProgressSynchronously({
-                    val progressIndicator = ProgressManager.getInstance().progressIndicator
-                    val exporter = SourceExporter(project, settings, progressIndicator)
+                // Use runBlocking to execute the suspend function synchronously
+                // This is appropriate here since we're already in a background thread
+                // from runProcessWithProgressSynchronously
+                val result = kotlinx.coroutines.runBlocking {
+                    exporter.exportSources(files)
+                }
+                
+                // Copy to clipboard (this doesn't need read action)
+                ApplicationManager.getApplication().invokeLater {
+                    val stringSelection = StringSelection(result.content)
+                    val toolkit = Toolkit.getDefaultToolkit()
+                    toolkit.systemClipboard.setContents(stringSelection, null)
                     
-                    // This needs to be run in a coroutine context, so we'll use the coroutine version
-                    ApplicationManager.getApplication().runReadAction {
-                        coroutineScope.launch {
-                            try {
-                                val result = exporter.exportSources(files)
-                                
-                                // Copy to clipboard
-                                val stringSelection = StringSelection(result.content)
-                                val toolkit = Toolkit.getDefaultToolkit()
-                                toolkit.systemClipboard.setContents(stringSelection, null)
-                                
-                                // Show success notification
-                                NotificationUtils.showNotification(
-                                    project,
-                                    "Export completed successfully",
-                                    "Exported ${result.processedFileCount} files to clipboard",
-                                    com.intellij.notification.NotificationType.INFORMATION
-                                )
-                            } catch (e: Exception) {
-                                NotificationUtils.showNotification(
-                                    project,
-                                    "Export failed",
-                                    "Error: ${e.message}",
-                                    com.intellij.notification.NotificationType.ERROR
-                                )
-                            }
-                        }
-                    }
-                }, "Exporting Files", true, project)
-                
+                    // Show success notification
+                    NotificationUtils.showNotification(
+                        project,
+                        "Export completed successfully",
+                        "Exported ${result.processedFileCount} files to clipboard",
+                        com.intellij.notification.NotificationType.INFORMATION
+                    )
+                }
             } catch (e: Exception) {
-                NotificationUtils.showNotification(
-                    project,
-                    "Export failed",
-                    "Error: ${e.message}",
-                    com.intellij.notification.NotificationType.ERROR
-                )
+                ApplicationManager.getApplication().invokeLater {
+                    NotificationUtils.showNotification(
+                        project,
+                        "Export failed",
+                        "Error: ${e.message}",
+                        com.intellij.notification.NotificationType.ERROR
+                    )
+                }
             }
-        }
+        }, "Exporting Files", true, project)
     }
 }

@@ -210,6 +210,12 @@
                     text="Compare with Last Export"
                     description="Show differences from last export"/>
             
+            <!-- Performance Configuration -->
+            <action id="SourceClipboardExport.ConfigureDependencySearch"
+                    class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ConfigureDependencySearchAction"
+                    text="Configure Performance..."
+                    description="Configure dependency search performance settings"/>
+            
             <!-- Toggle Filters - moved to bottom, less prominent -->
             <action id="SourceClipboardExport.ToggleFilters"
                     class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ToggleFiltersAction"
