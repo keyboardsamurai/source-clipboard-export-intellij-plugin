@@ -1,6 +1,7 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util
 
 import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiClass
@@ -109,30 +110,33 @@ object InheritanceFinder {
         
         // Search for implementations across TypeScript/JavaScript files
         val projectScope = GlobalSearchScope.projectScope(project)
-        val projectFileIndex = com.intellij.openapi.roots.ProjectFileIndex.getInstance(project)
-        val psiManager = PsiManager.getInstance(project)
         
-        projectFileIndex.iterateContent { file ->
-            if (file.isValid && !file.isDirectory && 
-                detectLanguage(file) in listOf(Language.TYPESCRIPT, Language.JAVASCRIPT, Language.JSX, Language.TSX)) {
-                
-                if (!includeTest && isTestFile(file)) {
-                    return@iterateContent true
-                }
-                
-                val candidateFile = psiManager.findFile(file)
-                if (candidateFile != null && candidateFile != psiFile) {
-                    val candidateText = candidateFile.text
+        runReadAction {
+            val projectFileIndex = com.intellij.openapi.roots.ProjectFileIndex.getInstance(project)
+            val psiManager = PsiManager.getInstance(project)
+            
+            projectFileIndex.iterateContent { file ->
+                if (file.isValid && !file.isDirectory && 
+                    detectLanguage(file) in listOf(Language.TYPESCRIPT, Language.JAVASCRIPT, Language.JSX, Language.TSX)) {
                     
-                    // Check if this file implements/extends any of our inheritable elements
-                    inheritableElements.forEach { element ->
-                        if (isImplementingElement(candidateText, element)) {
-                            implementations.add(file)
+                    if (!includeTest && isTestFile(file)) {
+                        return@iterateContent true
+                    }
+                    
+                    val candidateFile = psiManager.findFile(file)
+                    if (candidateFile != null && candidateFile != psiFile) {
+                        val candidateText = candidateFile.text
+                        
+                        // Check if this file implements/extends any of our inheritable elements
+                        inheritableElements.forEach { element ->
+                            if (isImplementingElement(candidateText, element)) {
+                                implementations.add(file)
+                            }
                         }
                     }
                 }
+                true
             }
-            true
         }
     }
     

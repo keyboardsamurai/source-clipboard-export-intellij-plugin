@@ -1,5 +1,7 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util
 
+import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.vfs.VirtualFile
@@ -53,7 +55,9 @@ object ExtendedTestFinder {
             // Find tests with direct naming relationship
             TEST_PATTERNS.forEach { pattern ->
                 val testName = pattern.replace("*", baseName)
-                val files = FilenameIndex.getVirtualFilesByName("$testName.$extension", projectScope)
+                val files = ReadAction.compute<Collection<VirtualFile>, Exception> {
+                    FilenameIndex.getVirtualFilesByName("$testName.$extension", projectScope)
+                }
                 testFiles.addAll(files)
             }
             
@@ -75,13 +79,16 @@ object ExtendedTestFinder {
      */
     fun findAllTestFiles(project: Project): Set<VirtualFile> {
         val testFiles = mutableSetOf<VirtualFile>()
-        val projectFileIndex = ProjectFileIndex.getInstance(project)
         
-        projectFileIndex.iterateContent { file ->
-            if (!file.isDirectory && isTestFile(file)) {
-                testFiles.add(file)
+        runReadAction {
+            val projectFileIndex = ProjectFileIndex.getInstance(project)
+            
+            projectFileIndex.iterateContent { file ->
+                if (!file.isDirectory && isTestFile(file)) {
+                    testFiles.add(file)
+                }
+                true
             }
-            true
         }
         
         return testFiles
@@ -93,28 +100,33 @@ object ExtendedTestFinder {
         extension: String,
         testFiles: MutableSet<VirtualFile>
     ) {
-        val projectFileIndex = ProjectFileIndex.getInstance(project)
-        
-        projectFileIndex.iterateContent { file ->
-            if (!file.isDirectory && 
-                file.extension == extension &&
-                isInTestDirectory(file) &&
-                file.nameWithoutExtension.contains(baseName, ignoreCase = true)) {
-                testFiles.add(file)
+        runReadAction {
+            val projectFileIndex = ProjectFileIndex.getInstance(project)
+            
+            projectFileIndex.iterateContent { file ->
+                if (!file.isDirectory && 
+                    file.extension == extension &&
+                    isInTestDirectory(file) &&
+                    file.nameWithoutExtension.contains(baseName, ignoreCase = true)) {
+                    testFiles.add(file)
+                }
+                true
             }
-            true
         }
     }
     
     private fun findTestResources(project: Project): Set<VirtualFile> {
         val resources = mutableSetOf<VirtualFile>()
-        val projectFileIndex = ProjectFileIndex.getInstance(project)
         
-        projectFileIndex.iterateContent { file ->
-            if (isTestResource(file)) {
-                resources.add(file)
+        runReadAction {
+            val projectFileIndex = ProjectFileIndex.getInstance(project)
+            
+            projectFileIndex.iterateContent { file ->
+                if (isTestResource(file)) {
+                    resources.add(file)
+                }
+                true
             }
-            true
         }
         
         return resources
@@ -133,7 +145,9 @@ object ExtendedTestFinder {
         utilityPatterns.forEach { pattern ->
             // Search for common extensions using modern API
             listOf("java", "kt", "js", "ts", "py").forEach { ext ->
-                val files = FilenameIndex.getVirtualFilesByName("$pattern.$ext", projectScope)
+                val files = ReadAction.compute<Collection<VirtualFile>, Exception> {
+                    FilenameIndex.getVirtualFilesByName("$pattern.$ext", projectScope)
+                }
                 utilities.addAll(files)
             }
         }

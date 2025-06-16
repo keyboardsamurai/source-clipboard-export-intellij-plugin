@@ -1,5 +1,7 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util
 
+import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.roots.ProjectRootManager
@@ -60,7 +62,9 @@ object RelatedFileFinder {
         
         // Search for test files with specific patterns
         testPatterns.forEach { pattern ->
-            val files = FilenameIndex.getVirtualFilesByName(pattern, GlobalSearchScope.projectScope(project))
+            val files = ReadAction.compute<Collection<VirtualFile>, Exception> {
+                FilenameIndex.getVirtualFilesByName(pattern, GlobalSearchScope.projectScope(project))
+            }
             testFiles.addAll(files)
         }
         
@@ -76,35 +80,38 @@ object RelatedFileFinder {
         val fileName = sourceFile.nameWithoutExtension
         val parentDir = sourceFile.parent ?: return
         
-        // Look for __tests__ folder in same directory
-        val testsDir = parentDir.findChild("__tests__")
-        testsDir?.children?.forEach { testFile ->
-            if (testFile.nameWithoutExtension.contains(fileName, ignoreCase = true)) {
-                testFiles.add(testFile)
+        runReadAction {
+            // Look for __tests__ folder in same directory
+            val testsDir = parentDir.findChild("__tests__")
+            testsDir?.children?.forEach { testFile ->
+                if (testFile.nameWithoutExtension.contains(fileName, ignoreCase = true)) {
+                    testFiles.add(testFile)
+                }
             }
-        }
-        
-        // Look for tests folder in same directory  
-        val testsDirAlt = parentDir.findChild("tests")
-        testsDirAlt?.children?.forEach { testFile ->
-            if (testFile.nameWithoutExtension.contains(fileName, ignoreCase = true)) {
-                testFiles.add(testFile)
+            
+            // Look for tests folder in same directory  
+            val testsDirAlt = parentDir.findChild("tests")
+            testsDirAlt?.children?.forEach { testFile ->
+                if (testFile.nameWithoutExtension.contains(fileName, ignoreCase = true)) {
+                    testFiles.add(testFile)
+                }
             }
-        }
-        
-        // Look for component.test.* pattern in same directory
-        parentDir.children.forEach { siblingFile ->
-            if (siblingFile.nameWithoutExtension.startsWith(fileName) && 
-                (siblingFile.name.contains(".test.") || siblingFile.name.contains(".spec."))) {
-                testFiles.add(siblingFile)
+            
+            // Look for component.test.* pattern in same directory
+            parentDir.children.forEach { siblingFile ->
+                if (siblingFile.nameWithoutExtension.startsWith(fileName) && 
+                    (siblingFile.name.contains(".test.") || siblingFile.name.contains(".spec."))) {
+                    testFiles.add(siblingFile)
+                }
             }
         }
     }
     
     fun findConfigFiles(project: Project, sourceFile: VirtualFile): List<VirtualFile> {
         val configFiles = mutableListOf<VirtualFile>()
-        val projectRootManager = ProjectRootManager.getInstance(project)
-        val projectRoot = projectRootManager.contentRoots.firstOrNull() ?: return emptyList()
+        val projectRoot = ReadAction.compute<VirtualFile?, Exception> {
+            ProjectRootManager.getInstance(project).contentRoots.firstOrNull()
+        } ?: return emptyList()
         val language = detectLanguage(sourceFile)
         
         // Base config files (always included)
@@ -146,11 +153,13 @@ object RelatedFileFinder {
         // Look for config files in project root and source file's directory
         val dirsToSearch = setOf(projectRoot, sourceFile.parent).filterNotNull()
         
-        dirsToSearch.forEach { dir ->
-            allConfigFiles.forEach { configName ->
-                val configFile = dir.findChild(configName)
-                if (configFile != null && configFile.exists()) {
-                    configFiles.add(configFile)
+        runReadAction {
+            dirsToSearch.forEach { dir ->
+                allConfigFiles.forEach { configName ->
+                    val configFile = dir.findChild(configName)
+                    if (configFile != null && configFile.exists()) {
+                        configFiles.add(configFile)
+                    }
                 }
             }
         }
@@ -162,13 +171,15 @@ object RelatedFileFinder {
         val recentFiles = mutableListOf<VirtualFile>()
         val cutoffTime = System.currentTimeMillis() - (hours * 60 * 60 * 1000)
         
-        val projectFileIndex = ProjectFileIndex.getInstance(project)
-        
-        projectFileIndex.iterateContent { file ->
-            if (!file.isDirectory && file.timeStamp > cutoffTime) {
-                recentFiles.add(file)
+        runReadAction {
+            val projectFileIndex = ProjectFileIndex.getInstance(project)
+            
+            projectFileIndex.iterateContent { file ->
+                if (!file.isDirectory && file.timeStamp > cutoffTime) {
+                    recentFiles.add(file)
+                }
+                true
             }
-            true
         }
         
         return recentFiles
@@ -180,32 +191,36 @@ object RelatedFileFinder {
         val language = detectLanguage(sourceFile)
         
         // Base behavior: all files in same directory
-        parent.children.forEach { file ->
-            if (!file.isDirectory && file != sourceFile) {
-                packageFiles.add(file)
+        runReadAction {
+            parent.children.forEach { file ->
+                if (!file.isDirectory && file != sourceFile) {
+                    packageFiles.add(file)
+                }
             }
         }
         
         // Language-specific additions
         when (language) {
             Language.JAVASCRIPT, Language.TYPESCRIPT, Language.JSX, Language.TSX -> {
-                // Include barrel exports (index.js/ts files)
-                val indexFiles = listOf("index.js", "index.ts", "index.jsx", "index.tsx")
-                indexFiles.forEach { indexFile ->
-                    val indexVirtualFile = parent.findChild(indexFile)
-                    if (indexVirtualFile != null && indexVirtualFile != sourceFile) {
-                        packageFiles.add(indexVirtualFile)
+                runReadAction {
+                    // Include barrel exports (index.js/ts files)
+                    val indexFiles = listOf("index.js", "index.ts", "index.jsx", "index.tsx")
+                    indexFiles.forEach { indexFile ->
+                        val indexVirtualFile = parent.findChild(indexFile)
+                        if (indexVirtualFile != null && indexVirtualFile != sourceFile) {
+                            packageFiles.add(indexVirtualFile)
+                        }
                     }
-                }
-                
-                // Include related CSS/SCSS files for components
-                if (sourceFile.extension in listOf("jsx", "tsx")) {
-                    val baseName = sourceFile.nameWithoutExtension
-                    val styleExtensions = listOf("css", "scss", "sass", "module.css", "module.scss")
-                    styleExtensions.forEach { ext ->
-                        val styleFile = parent.findChild("$baseName.$ext")
-                        if (styleFile != null) {
-                            packageFiles.add(styleFile)
+                    
+                    // Include related CSS/SCSS files for components
+                    if (sourceFile.extension in listOf("jsx", "tsx")) {
+                        val baseName = sourceFile.nameWithoutExtension
+                        val styleExtensions = listOf("css", "scss", "sass", "module.css", "module.scss")
+                        styleExtensions.forEach { ext ->
+                            val styleFile = parent.findChild("$baseName.$ext")
+                            if (styleFile != null) {
+                                packageFiles.add(styleFile)
+                            }
                         }
                     }
                 }
@@ -224,8 +239,9 @@ object RelatedFileFinder {
     fun findDirectImports(project: Project, sourceFile: VirtualFile): List<VirtualFile> {
         if (sourceFile.isDirectory) return emptyList()
         
-        val psiManager = PsiManager.getInstance(project)
-        val psiFile = psiManager.findFile(sourceFile) ?: return emptyList()
+        val psiFile = ReadAction.compute<PsiFile?, Exception> {
+            PsiManager.getInstance(project).findFile(sourceFile)
+        } ?: return emptyList()
         
         return findImportedFiles(project, psiFile, transitive = false)
     }
@@ -233,8 +249,9 @@ object RelatedFileFinder {
     fun findTransitiveImports(project: Project, sourceFile: VirtualFile): List<VirtualFile> {
         if (sourceFile.isDirectory) return emptyList()
         
-        val psiManager = PsiManager.getInstance(project)
-        val psiFile = psiManager.findFile(sourceFile) ?: return emptyList()
+        val psiFile = ReadAction.compute<PsiFile?, Exception> {
+            PsiManager.getInstance(project).findFile(sourceFile)
+        } ?: return emptyList()
         
         return findImportedFiles(project, psiFile, transitive = true)
     }
@@ -249,7 +266,9 @@ object RelatedFileFinder {
             if (currentFile in processed) continue
             processed.add(currentFile)
             
-            val currentPsiFile = PsiManager.getInstance(project).findFile(currentFile) ?: continue
+            val currentPsiFile = ReadAction.compute<PsiFile?, Exception> {
+                PsiManager.getInstance(project).findFile(currentFile)
+            } ?: continue
             val directImports = extractImportsFromFile(project, currentPsiFile)
             
             directImports.forEach { importedFile ->
@@ -332,8 +351,9 @@ object RelatedFileFinder {
         importPath: String,
         language: Language
     ): VirtualFile? {
-        val projectRootManager = ProjectRootManager.getInstance(project)
-        val projectRoot = projectRootManager.contentRoots.firstOrNull() ?: return null
+        val projectRoot = ReadAction.compute<VirtualFile?, Exception> {
+            ProjectRootManager.getInstance(project).contentRoots.firstOrNull()
+        } ?: return null
         
         // Language-specific resolution strategies
         return when (language) {
@@ -354,117 +374,130 @@ object RelatedFileFinder {
     private fun resolveJavaScriptImport(projectRoot: VirtualFile, sourceFile: VirtualFile, importPath: String): VirtualFile? {
         // 1. Relative imports (./file, ../file)
         if (importPath.startsWith("./") || importPath.startsWith("../")) {
-            val resolvedPath = sourceFile.parent.findFileByRelativePath(importPath)
-            if (resolvedPath?.exists() == true) return resolvedPath
-            
-            // Try with common extensions
-            val extensions = listOf(".js", ".ts", ".jsx", ".tsx", ".json", ".mjs")
-            extensions.forEach { ext ->
-                val withExt = sourceFile.parent.findFileByRelativePath("$importPath$ext")
-                if (withExt?.exists() == true) return withExt
-            }
-            
-            // Try index files in directories
-            val indexFiles = listOf("/index.js", "/index.ts", "/index.jsx", "/index.tsx")
-            indexFiles.forEach { indexFile ->
-                val indexPath = sourceFile.parent.findFileByRelativePath("$importPath$indexFile")
-                if (indexPath?.exists() == true) return indexPath
+            return ReadAction.compute<VirtualFile?, Exception> {
+                val resolvedPath = sourceFile.parent.findFileByRelativePath(importPath)
+                if (resolvedPath?.exists() == true) return@compute resolvedPath
+                
+                // Try with common extensions
+                val extensions = listOf(".js", ".ts", ".jsx", ".tsx", ".json", ".mjs")
+                extensions.forEach { ext ->
+                    val withExt = sourceFile.parent.findFileByRelativePath("$importPath$ext")
+                    if (withExt?.exists() == true) return@compute withExt
+                }
+                
+                // Try index files in directories
+                val indexFiles = listOf("/index.js", "/index.ts", "/index.jsx", "/index.tsx")
+                indexFiles.forEach { indexFile ->
+                    val indexPath = sourceFile.parent.findFileByRelativePath("$importPath$indexFile")
+                    if (indexPath?.exists() == true) return@compute indexPath
+                }
+                null
             }
         }
         
         // 2. Absolute imports from src
-        val srcPaths = listOf("src", "app", "pages", "components", "lib", "utils")
-        srcPaths.forEach { srcDir ->
-            val srcRoot = projectRoot.findChild(srcDir)
-            if (srcRoot != null) {
-                val extensions = listOf("", ".js", ".ts", ".jsx", ".tsx", ".json")
+        return ReadAction.compute<VirtualFile?, Exception> {
+            val srcPaths = listOf("src", "app", "pages", "components", "lib", "utils")
+            srcPaths.forEach { srcDir ->
+                val srcRoot = projectRoot.findChild(srcDir)
+                if (srcRoot != null) {
+                    val extensions = listOf("", ".js", ".ts", ".jsx", ".tsx", ".json")
+                    extensions.forEach { ext ->
+                        val candidate = srcRoot.findFileByRelativePath("$importPath$ext")
+                        if (candidate?.exists() == true) return@compute candidate
+                    }
+                    
+                    // Try index files
+                    val indexFiles = listOf("/index.js", "/index.ts", "/index.jsx", "/index.tsx")
+                    indexFiles.forEach { indexFile ->
+                        val indexPath = srcRoot.findFileByRelativePath("$importPath$indexFile")
+                        if (indexPath?.exists() == true) return@compute indexPath
+                    }
+                }
+            }
+            
+            // 3. Next.js specific patterns
+            if (importPath.startsWith("@/")) {
+                val cleanPath = importPath.substring(2)
+                val srcRoot = projectRoot.findChild("src") ?: projectRoot
+                val extensions = listOf("", ".js", ".ts", ".jsx", ".tsx")
                 extensions.forEach { ext ->
-                    val candidate = srcRoot.findFileByRelativePath("$importPath$ext")
-                    if (candidate?.exists() == true) return candidate
-                }
-                
-                // Try index files
-                val indexFiles = listOf("/index.js", "/index.ts", "/index.jsx", "/index.tsx")
-                indexFiles.forEach { indexFile ->
-                    val indexPath = srcRoot.findFileByRelativePath("$importPath$indexFile")
-                    if (indexPath?.exists() == true) return indexPath
+                    val candidate = srcRoot.findFileByRelativePath("$cleanPath$ext")
+                    if (candidate?.exists() == true) return@compute candidate
                 }
             }
+            
+            null
         }
-        
-        // 3. Next.js specific patterns
-        if (importPath.startsWith("@/")) {
-            val cleanPath = importPath.substring(2)
-            val srcRoot = projectRoot.findChild("src") ?: projectRoot
-            val extensions = listOf("", ".js", ".ts", ".jsx", ".tsx")
-            extensions.forEach { ext ->
-                val candidate = srcRoot.findFileByRelativePath("$cleanPath$ext")
-                if (candidate?.exists() == true) return candidate
-            }
-        }
-        
-        return null
     }
     
     private fun resolveJavaKotlinImport(projectRoot: VirtualFile, importPath: String): VirtualFile? {
-        val pathVariations = listOf(
-            importPath.replace(".", "/"),
-            importPath.replace(".", "/").replace("_", ""),
-            importPath
-        )
-        
-        pathVariations.forEach { path ->
-            val srcDirs = listOf("src/main/java", "src/main/kotlin", "src", "")
-            srcDirs.forEach { srcDir ->
-                val fullPath = if (srcDir.isEmpty()) path else "$srcDir/$path"
-                val extensions = listOf("", ".java", ".kt")
-                
-                extensions.forEach { ext ->
-                    val candidate = projectRoot.findFileByRelativePath("$fullPath$ext")
-                    if (candidate?.exists() == true) return candidate
+        return ReadAction.compute<VirtualFile?, Exception> {
+            val pathVariations = listOf(
+                importPath.replace(".", "/"),
+                importPath.replace(".", "/").replace("_", ""),
+                importPath
+            )
+            
+            pathVariations.forEach { path ->
+                val srcDirs = listOf("src/main/java", "src/main/kotlin", "src", "")
+                srcDirs.forEach { srcDir ->
+                    val fullPath = if (srcDir.isEmpty()) path else "$srcDir/$path"
+                    val extensions = listOf("", ".java", ".kt")
+                    
+                    extensions.forEach { ext ->
+                        val candidate = projectRoot.findFileByRelativePath("$fullPath$ext")
+                        if (candidate?.exists() == true) return@compute candidate
+                    }
                 }
             }
+            
+            null
         }
-        
-        return null
     }
     
     private fun resolvePythonImport(projectRoot: VirtualFile, importPath: String): VirtualFile? {
-        val pathVariations = listOf(
-            importPath.replace(".", "/") + ".py",
-            "$importPath.py",
-            "${importPath.replace(".", "/")}/__init__.py"
-        )
-        
-        pathVariations.forEach { path ->
-            val candidate = projectRoot.findFileByRelativePath(path)
-            if (candidate?.exists() == true) return candidate
+        return ReadAction.compute<VirtualFile?, Exception> {
+            val pathVariations = listOf(
+                importPath.replace(".", "/") + ".py",
+                "$importPath.py",
+                "${importPath.replace(".", "/")}/__init__.py"
+            )
+            
+            pathVariations.forEach { path ->
+                val candidate = projectRoot.findFileByRelativePath(path)
+                if (candidate?.exists() == true) return@compute candidate
+            }
+            
+            null
         }
-        
-        return null
     }
     
     private fun resolveHtmlReference(sourceFile: VirtualFile, referencePath: String): VirtualFile? {
         // Relative path resolution for HTML
-        return if (referencePath.startsWith("/")) {
-            // Absolute path from project root
-            sourceFile.fileSystem.findFileByPath(referencePath)
-        } else {
-            // Relative path from current file
-            sourceFile.parent.findFileByRelativePath(referencePath)
+        return ReadAction.compute<VirtualFile?, Exception> {
+            if (referencePath.startsWith("/")) {
+                // Absolute path from project root
+                sourceFile.fileSystem.findFileByPath(referencePath)
+            } else {
+                // Relative path from current file
+                sourceFile.parent.findFileByRelativePath(referencePath)
+            }
         }
     }
     
     private fun resolveCssImport(sourceFile: VirtualFile, importPath: String): VirtualFile? {
         // CSS @import resolution
-        val extensions = listOf("", ".css", ".scss", ".sass")
-        
-        extensions.forEach { ext ->
-            val candidate = sourceFile.parent.findFileByRelativePath("$importPath$ext")
-            if (candidate?.exists() == true) return candidate
+        return ReadAction.compute<VirtualFile?, Exception> {
+            val extensions = listOf("", ".css", ".scss", ".sass")
+            
+            extensions.forEach { ext ->
+                val candidate = sourceFile.parent.findFileByRelativePath("$importPath$ext")
+                if (candidate?.exists() == true) return@compute candidate
+            }
+            
+            null
         }
-        
-        return null
     }
     
     private fun detectLanguage(file: VirtualFile): Language {

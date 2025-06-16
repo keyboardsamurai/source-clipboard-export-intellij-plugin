@@ -1,28 +1,28 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util
 
-import com.intellij.lang.Language
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
-import com.intellij.psi.PsiModifier
-import com.intellij.psi.PsiModifierList
-import com.intellij.psi.PsiModifierListOwner
-import com.intellij.psi.PsiNameIdentifierOwner
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertDoesNotThrow
-import org.junit.jupiter.params.ParameterizedTest
-import org.junit.jupiter.params.provider.Arguments
-import org.junit.jupiter.params.provider.MethodSource
-import java.util.stream.Stream
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
+/**
+ * Tests for DependencyFinder utility.
+ * 
+ * NOTE: Many tests in this file have been commented out because they were testing the
+ * `isExternallyVisible` method which was removed in the refactoring from PSI-based
+ * to regex-based implementation. The new implementation uses a two-phase approach:
+ * 1. Fast text-based search to find candidate files
+ * 2. PSI-based ReferencesSearch only on candidates (delegating visibility checks to IntelliJ)
+ * 
+ * The remaining tests validate text-based patterns and edge cases that are still relevant.
+ */
 class DependencyFinderTest {
 
     private lateinit var project: Project
@@ -42,6 +42,11 @@ class DependencyFinderTest {
         every { psiManager.findFile(virtualFile) } returns psiFile
     }
 
+    // OBSOLETE TESTS - Commented out because isExternallyVisible method was removed
+    // in the new regex-based implementation. The new implementation delegates
+    // visibility checking to IntelliJ's ReferencesSearch API.
+    
+    /*
     // JavaScript/TypeScript Export Detection Tests
     
     @ParameterizedTest
@@ -214,7 +219,10 @@ class DependencyFinderTest {
         // Then
         assertFalse(result, "Element without containing file should not be visible")
     }
+    */
 
+    // OBSOLETE - Helper methods used only by the commented-out tests
+    /*
     // Helper methods for creating mock elements
     
     private fun createMockJavaScriptElement(
@@ -290,14 +298,20 @@ class DependencyFinderTest {
         every { javaLanguage.id } returns "JAVA"
         every { psiFile.language } returns javaLanguage
     }
+    */
     
+    // OBSOLETE - isExternallyVisible method was removed in the new implementation
+    /*
     // Use reflection to access the private isExternallyVisible method
     private fun callIsExternallyVisible(element: PsiElement): Boolean {
         val method = DependencyFinder::class.java.getDeclaredMethod("isExternallyVisible", PsiElement::class.java)
         method.isAccessible = true
         return method.invoke(DependencyFinder, element) as Boolean
     }
+    */
 
+    // OBSOLETE - Test data providers for the commented-out tests
+    /*
     companion object {
         @JvmStatic
         fun provideJavaScriptExportCases(): Stream<Arguments> {
@@ -460,6 +474,7 @@ class DependencyFinderTest {
 
 
     }
+    */
 
     // REGRESSION TESTS FOR ENCOUNTERED FAILURE MODES
 

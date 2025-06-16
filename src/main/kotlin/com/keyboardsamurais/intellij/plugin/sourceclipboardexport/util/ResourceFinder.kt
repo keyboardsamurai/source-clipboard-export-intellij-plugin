@@ -151,7 +151,9 @@ object ResourceFinder {
         val templateMatch = templateUrlPattern.find(psiFile.text)
         if (templateMatch != null) {
             val templatePath = templateMatch.groupValues[1]
-            val templateFile = psiFile.virtualFile.parent.findFileByRelativePath(templatePath)
+            val templateFile = ReadAction.compute<VirtualFile?, Exception> {
+                psiFile.virtualFile.parent.findFileByRelativePath(templatePath)
+            }
             if (templateFile != null && templateFile.isValid) {
                 resources.add(templateFile)
             }
@@ -160,7 +162,9 @@ object ResourceFinder {
         val styleMatches = styleUrlsPattern.findAll(psiFile.text)
         for (match in styleMatches) {
             val stylePath = match.groupValues[1]
-            val styleFile = psiFile.virtualFile.parent.findFileByRelativePath(stylePath)
+            val styleFile = ReadAction.compute<VirtualFile?, Exception> {
+                psiFile.virtualFile.parent.findFileByRelativePath(stylePath)
+            }
             if (styleFile != null && styleFile.isValid) {
                 resources.add(styleFile)
             }
@@ -180,13 +184,17 @@ object ResourceFinder {
             val resourcePath = match.groupValues[1]
             
             // Try to resolve relative to current file
-            val resourceFile = psiFile.virtualFile.parent.findFileByRelativePath(resourcePath)
+            val resourceFile = ReadAction.compute<VirtualFile?, Exception> {
+                psiFile.virtualFile.parent.findFileByRelativePath(resourcePath)
+            }
             if (resourceFile != null && resourceFile.isValid) {
                 resources.add(resourceFile)
             } else {
                 // Try to find by name using modern API
                 val fileName = resourcePath.substringAfterLast('/')
-                val foundFiles = FilenameIndex.getVirtualFilesByName(fileName, scope)
+                val foundFiles = ReadAction.compute<Collection<VirtualFile>, Exception> {
+                    FilenameIndex.getVirtualFilesByName(fileName, scope)
+                }
                 resources.addAll(foundFiles)
             }
         }
@@ -201,7 +209,9 @@ object ResourceFinder {
         // Look for resources with same base name using modern API
         for (ext in RESOURCE_EXTENSIONS) {
             if (ext != file.extension) {
-                val relatedFiles = FilenameIndex.getVirtualFilesByName("$baseName.$ext", scope)
+                val relatedFiles = ReadAction.compute<Collection<VirtualFile>, Exception> {
+                    FilenameIndex.getVirtualFilesByName("$baseName.$ext", scope)
+                }
                 resources.addAll(relatedFiles)
             }
         }
