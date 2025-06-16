@@ -1,9 +1,13 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.gitignore
 
+import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
-import java.nio.file.*
+import java.nio.file.FileSystems
+import java.nio.file.InvalidPathException
+import java.nio.file.Path
+import java.nio.file.PathMatcher
 import java.util.regex.PatternSyntaxException
 
 /**
@@ -29,7 +33,14 @@ class GitignoreParser(val gitignoreFile: VirtualFile) {
         val lines = try {
             // Ensure UTF-8 encoding is handled if VfsUtilCore doesn't guarantee it
             // val text = VfsUtilCore.loadText(gitignoreFile, StandardCharsets.UTF_8)
-            val text = VfsUtilCore.loadText(gitignoreFile)
+            val text = if (com.intellij.openapi.application.ApplicationManager.getApplication()?.isReadAccessAllowed == false) {
+                ReadAction.compute<String, Exception> {
+                    VfsUtilCore.loadText(gitignoreFile)
+                }
+            } else {
+                // Already in read action or in test environment (including when Application is null)
+                VfsUtilCore.loadText(gitignoreFile)
+            }
             text.lineSequence()
         } catch (e: Exception) {
             LOG.warn("Cannot read $gitignorePathForLogging", e); emptySequence<String>()

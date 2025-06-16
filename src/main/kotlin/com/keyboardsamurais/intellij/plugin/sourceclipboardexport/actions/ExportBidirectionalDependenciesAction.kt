@@ -8,7 +8,6 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
-import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.VirtualFile
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.DependencyFinder
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
@@ -44,22 +43,8 @@ class ExportBidirectionalDependenciesAction : AnAction() {
             return
         }
         
-        // Ask user which dependency type to include
-        val dependencyChoice = Messages.showChooseDialog(
-            project,
-            "Select dependency scope to include:",
-            "Dependency Export Options",
-            Messages.getQuestionIcon(),
-            arrayOf(
-                "Direct imports only (faster)",
-                "All transitive dependencies (comprehensive)"
-            ),
-            "Direct imports only (faster)"
-        )
-        
-        if (dependencyChoice == -1) return // User cancelled
-        
-        val includeTransitive = dependencyChoice == 1
+        // Always include transitive dependencies now that it's fast
+        val includeTransitive = true
         
         ProgressManager.getInstance().run(object : Task.Backgroundable(
             project,

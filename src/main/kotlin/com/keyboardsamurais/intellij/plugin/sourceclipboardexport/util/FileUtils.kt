@@ -1,5 +1,6 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util
 
+import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectRootManager
@@ -96,7 +97,9 @@ object FileUtils {
 
     fun getRepositoryRoot(project: Project): VirtualFile? {
         return try {
-            ProjectRootManager.getInstance(project).contentRoots.firstOrNull()
+            ReadAction.compute<VirtualFile?, Exception> {
+                ProjectRootManager.getInstance(project).contentRoots.firstOrNull()
+            }
         } catch (e: Exception) {
             // In test environments, the ProjectRootManager service might not be available
             LOGGER.warn("Could not get repository root: ${e.message}")
