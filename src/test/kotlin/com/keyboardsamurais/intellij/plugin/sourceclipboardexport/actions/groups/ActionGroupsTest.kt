@@ -141,10 +141,44 @@ class ActionGroupsTest {
         val children = group.getChildren(event)
         
         // Then
-        assert(children.size == 3)
+        assert(children.size == 6) // Now includes separators and bidirectional action
         assert(children.any { it.javaClass.simpleName == "ExportWithDirectImportsAction" })
         assert(children.any { it.javaClass.simpleName == "ExportWithTransitiveImportsAction" })
         assert(children.any { it.javaClass.simpleName == "ExportDependentsAction" })
+        assert(children.any { it.javaClass.simpleName == "ExportBidirectionalDependenciesAction" })
+        
+        // Check that separators are in correct positions
+        assert(children[2].javaClass.simpleName.contains("Separator"))
+        assert(children[4].javaClass.simpleName.contains("Separator"))
+    }
+    
+    @Test
+    fun `test DependencyExportGroup actions have correct labels and icons`() {
+        // Given
+        val group = DependencyExportGroup()
+        
+        // When
+        val children = group.getChildren(event)
+        val actions = children.filterNot { it.javaClass.simpleName.contains("Separator") }
+        
+        // Then
+        // Check labels
+        assert(actions[0].templatePresentation.text == "Include Direct Dependencies")
+        assert(actions[1].templatePresentation.text == "Include Transitive Dependencies")
+        assert(actions[2].templatePresentation.text == "Include Reverse Dependencies")
+        assert(actions[3].templatePresentation.text == "Include Bidirectional Dependencies")
+        
+        // Check descriptions
+        assert(actions[0].templatePresentation.description == "Export selected files + their direct imports only")
+        assert(actions[1].templatePresentation.description == "Export selected files + complete dependency tree")
+        assert(actions[2].templatePresentation.description == "Export selected files + all files that import/use them")
+        assert(actions[3].templatePresentation.description == "Export selected files + dependencies + reverse dependencies")
+        
+        // Check icons are set
+        assert(actions[0].templatePresentation.icon != null)
+        assert(actions[1].templatePresentation.icon != null)
+        assert(actions[2].templatePresentation.icon != null)
+        assert(actions[3].templatePresentation.icon != null)
     }
     
     // RelatedResourcesExportGroup Tests

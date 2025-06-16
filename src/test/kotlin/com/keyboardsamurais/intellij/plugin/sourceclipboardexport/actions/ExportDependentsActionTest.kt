@@ -6,7 +6,10 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkAll
 import io.mockk.verify
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
@@ -25,6 +28,11 @@ class ExportDependentsActionTest {
         file = mockk(relaxed = true)
     }
     
+    @AfterEach
+    fun tearDown() {
+        unmockkAll()
+    }
+    
     @Test
     fun `test action presentation text and description`() {
         // Verify the action is properly initialized
@@ -38,6 +46,10 @@ class ExportDependentsActionTest {
         every { event.project } returns project
         every { event.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) } returns arrayOf(file)
         every { file.isDirectory } returns false
+        
+        // Mock ReadAction - return true since we have a non-directory file
+        mockkStatic("com.intellij.openapi.application.ReadAction")
+        every { com.intellij.openapi.application.ReadAction.compute<Boolean, Exception>(any()) } returns true
         
         // When
         action.update(event)
@@ -79,6 +91,10 @@ class ExportDependentsActionTest {
         every { event.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) } returns arrayOf(file)
         every { file.isDirectory } returns true
         
+        // Mock ReadAction - return value based on isDirectory mock
+        mockkStatic("com.intellij.openapi.application.ReadAction")
+        every { com.intellij.openapi.application.ReadAction.compute<Boolean, Exception>(any()) } returns false
+        
         // When
         action.update(event)
         
@@ -95,6 +111,10 @@ class ExportDependentsActionTest {
         
         every { event.project } returns project
         every { event.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) } returns arrayOf(directory, file)
+        
+        // Mock ReadAction - return true since we have at least one non-directory file
+        mockkStatic("com.intellij.openapi.application.ReadAction")
+        every { com.intellij.openapi.application.ReadAction.compute<Boolean, Exception>(any()) } returns true
         
         // When
         action.update(event)
