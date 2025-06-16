@@ -81,10 +81,14 @@ class ExportDependentsAction : AnAction() {
                         DependencyFinderConfig.resetToDefaults()
                     }
                     
+                    // Validate configuration
+                    DependencyFinder.validateConfiguration(project, selectedFiles.size)
+                    
                     // Find all dependents
                     val startTime = System.currentTimeMillis()
                     val dependents = runBlocking {
-                        DependencyFinder.findDependents(selectedFiles, project)
+                        // Pass the selected files as already included to avoid redundant processing
+                        DependencyFinder.findDependents(selectedFiles, project, selectedFiles.toSet())
                     }
                     val duration = System.currentTimeMillis() - startTime
                     

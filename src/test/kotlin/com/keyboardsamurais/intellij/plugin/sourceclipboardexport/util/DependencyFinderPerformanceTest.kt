@@ -1,5 +1,7 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util
 
+import com.intellij.openapi.project.Project
+import io.mockk.mockk
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -51,6 +53,9 @@ class DependencyFinderPerformanceTest {
         assertEquals(2, DependencyFinderConfig.maxTraversalDepth)
         assertEquals(20, DependencyFinderConfig.elementBatchSize)
         assertTrue(DependencyFinderConfig.enableCaching)
+        assertEquals(2, DependencyFinderConfig.maxConcurrentPsiSearches)
+        assertEquals(50, DependencyFinderConfig.maxResultsPerSearch)
+        assertTrue(DependencyFinderConfig.enableEarlyTermination)
     }
     
     @Test
@@ -62,6 +67,10 @@ class DependencyFinderPerformanceTest {
         assertEquals(1_000_000, DependencyFinderConfig.maxFileSizeBytes)
         assertEquals(1, DependencyFinderConfig.psiSearchFallbackThreshold)
         assertTrue(DependencyFinderConfig.enableTextSearchFallback)
+        assertEquals(6, DependencyFinderConfig.maxConcurrentPsiSearches)
+        assertEquals(500, DependencyFinderConfig.maxResultsPerSearch)
+        assertFalse(DependencyFinderConfig.enableEarlyTermination)
+        assertEquals(100, DependencyFinderConfig.maxElementsPerFile)
     }
     
     @Test
@@ -77,6 +86,13 @@ class DependencyFinderPerformanceTest {
         // Should have additional skip directories
         assertTrue(DependencyFinderConfig.skipDirs.contains("vendor"))
         assertTrue(DependencyFinderConfig.skipDirs.contains("target"))
+        
+        // Performance settings
+        assertEquals(2, DependencyFinderConfig.maxConcurrentPsiSearches)
+        assertEquals(100, DependencyFinderConfig.maxResultsPerSearch)
+        assertTrue(DependencyFinderConfig.enableEarlyTermination)
+        assertEquals(20, DependencyFinderConfig.elementBatchSize)
+        assertEquals(25, DependencyFinderConfig.maxElementsPerFile)
     }
     
     @Test
@@ -97,5 +113,73 @@ class DependencyFinderPerformanceTest {
         
         DependencyFinderConfig.maxTraversalDepth = 5
         assertEquals(5, DependencyFinderConfig.maxTraversalDepth)
+    }
+    
+    @Test
+    fun `test interactive configuration`() {
+        // Configure for interactive/responsive use
+        DependencyFinderConfig.configureForInteractive()
+        
+        assertEquals(200, DependencyFinderConfig.maxFilesToScan)
+        assertEquals(50_000, DependencyFinderConfig.maxFileSizeBytes)
+        assertEquals(1, DependencyFinderConfig.maxConcurrentPsiSearches)
+        assertEquals(30, DependencyFinderConfig.maxResultsPerSearch)
+        assertTrue(DependencyFinderConfig.enableEarlyTermination)
+        assertEquals(5, DependencyFinderConfig.elementBatchSize)
+        assertEquals(2, DependencyFinderConfig.maxTraversalDepth)
+        assertEquals(10, DependencyFinderConfig.maxElementsPerFile)
+    }
+    
+    @Test
+    fun `test concurrency control settings`() {
+        // Test different concurrency settings
+        DependencyFinderConfig.maxConcurrentPsiSearches = 1
+        assertEquals(1, DependencyFinderConfig.maxConcurrentPsiSearches)
+        
+        DependencyFinderConfig.maxConcurrentPsiSearches = 8
+        assertEquals(8, DependencyFinderConfig.maxConcurrentPsiSearches)
+        
+        // Test progressive batching
+        DependencyFinderConfig.enableProgressiveBatching = true
+        assertTrue(DependencyFinderConfig.enableProgressiveBatching)
+        
+        DependencyFinderConfig.enableProgressiveBatching = false
+        assertFalse(DependencyFinderConfig.enableProgressiveBatching)
+    }
+    
+    @Test
+    fun `test early termination settings`() {
+        // Test early termination configuration
+        DependencyFinderConfig.enableEarlyTermination = true
+        assertTrue(DependencyFinderConfig.enableEarlyTermination)
+        
+        DependencyFinderConfig.maxResultsPerSearch = 100
+        assertEquals(100, DependencyFinderConfig.maxResultsPerSearch)
+        
+        DependencyFinderConfig.enableEarlyTermination = false
+        assertFalse(DependencyFinderConfig.enableEarlyTermination)
+        
+        DependencyFinderConfig.maxResultsPerSearch = 1000
+        assertEquals(1000, DependencyFinderConfig.maxResultsPerSearch)
+    }
+    
+    @Test
+    fun `test configuration validation warnings`() {
+        val mockProject = mockk<Project>(relaxed = true)
+        
+        // Test high concurrency warning
+        DependencyFinderConfig.maxConcurrentPsiSearches = 6
+        DependencyFinder.validateConfiguration(mockProject, 15)
+        // Should log warning about high concurrency
+        
+        // Test early termination disabled warning
+        DependencyFinderConfig.enableEarlyTermination = false
+        DependencyFinder.validateConfiguration(mockProject, 10)
+        // Should log warning about early termination disabled
+        
+        // Test high elements per file warning
+        DependencyFinderConfig.maxElementsPerFile = 150
+        DependencyFinder.validateConfiguration(mockProject, 5)
+        // Should log warning about high maxElementsPerFile
     }
 }

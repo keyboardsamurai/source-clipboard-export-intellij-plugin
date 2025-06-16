@@ -29,6 +29,14 @@ object DependencyFinderConfig {
     var maxTraversalDepth: Int = 3 // Limit PSI tree traversal depth
     var maxElementsPerFile: Int = 50 // Limit elements to search per file
     
+    // Concurrency control
+    var maxConcurrentPsiSearches: Int = 4 // Limit concurrent PSI operations
+    var enableProgressiveBatching: Boolean = true // Start with small batches, increase if responsive
+    
+    // Early termination
+    var maxResultsPerSearch: Int = 200 // Stop searching after finding this many results
+    var enableEarlyTermination: Boolean = true // Stop when we have enough results
+    
     /**
      * Reset to default values
      */
@@ -45,6 +53,10 @@ object DependencyFinderConfig {
         elementBatchSize = 10
         maxTraversalDepth = 3
         maxElementsPerFile = 50
+        maxConcurrentPsiSearches = 4
+        enableProgressiveBatching = true
+        maxResultsPerSearch = 200
+        enableEarlyTermination = true
     }
     
     /**
@@ -55,6 +67,10 @@ object DependencyFinderConfig {
         maxFileSizeBytes = 1_000_000 // 1MB
         psiSearchFallbackThreshold = 1
         enableTextSearchFallback = true
+        maxConcurrentPsiSearches = 6
+        maxResultsPerSearch = 500
+        enableEarlyTermination = false
+        maxElementsPerFile = 100
     }
     
     /**
@@ -67,6 +83,11 @@ object DependencyFinderConfig {
         enableTextSearchFallback = true
         // Add more aggressive skip patterns for large projects
         skipDirs = skipDirs + listOf("vendor", "target", "tmp", "temp", "cache", "logs")
+        maxConcurrentPsiSearches = 2
+        maxResultsPerSearch = 100
+        enableEarlyTermination = true
+        elementBatchSize = 20
+        maxElementsPerFile = 25
     }
     
     /**
@@ -82,5 +103,22 @@ object DependencyFinderConfig {
         elementBatchSize = 20 // Larger batches for performance
         maxTraversalDepth = 2 // Shallow traversal for speed
         maxElementsPerFile = 20 // Fewer elements for speed
+        maxConcurrentPsiSearches = 2 // Very limited concurrency
+        maxResultsPerSearch = 50 // Stop early
+        enableEarlyTermination = true
+    }
+    
+    /**
+     * Configure for interactive/responsive search (e.g., in tool windows)
+     */
+    fun configureForInteractive() {
+        maxFilesToScan = 200
+        maxFileSizeBytes = 50_000 // 50KB
+        maxConcurrentPsiSearches = 1 // Single-threaded for responsiveness
+        maxResultsPerSearch = 30 // Quick results
+        enableEarlyTermination = true
+        elementBatchSize = 5 // Small batches for responsiveness
+        maxTraversalDepth = 2
+        maxElementsPerFile = 10
     }
 } 

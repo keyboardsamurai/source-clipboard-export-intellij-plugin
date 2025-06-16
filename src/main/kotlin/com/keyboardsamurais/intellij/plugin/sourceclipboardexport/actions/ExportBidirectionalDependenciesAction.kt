@@ -56,10 +56,17 @@ class ExportBidirectionalDependenciesAction : AnAction() {
                     val allFiles = mutableSetOf<VirtualFile>()
                     allFiles.addAll(selectedFiles)
                     
+                    // Validate configuration for performance
+                    DependencyFinder.validateConfiguration(project, selectedFiles.size)
+                    
                     // Phase 1: Find reverse dependencies (what uses these files)
                     indicator.text = "Finding reverse dependencies..."
+                    indicator.isIndeterminate = false
+                    indicator.fraction = 0.1
+                    
                     val dependents = runBlocking {
-                        DependencyFinder.findDependents(selectedFiles, project)
+                        // Pass the already selected files to avoid redundant PSI parsing
+                        DependencyFinder.findDependents(selectedFiles, project, allFiles)
                     }
                     LOG.info("Found ${dependents.size} reverse dependencies")
                     allFiles.addAll(dependents)
@@ -70,8 +77,13 @@ class ExportBidirectionalDependenciesAction : AnAction() {
                     } else {
                         "Finding direct dependencies..."
                     }
+                    indicator.fraction = 0.4
                     
-                    selectedFiles.forEach { file ->
+                    // Process files in parallel for better performance
+                    val fileDependencies = selectedFiles.mapIndexed { index, file ->
+                        indicator.checkCanceled()
+                        indicator.fraction = 0.4 + (0.3 * index / selectedFiles.size)
+                        
                         val dependencies = ReadAction.compute<List<VirtualFile>, Exception> {
                             if (includeTransitive) {
                                 RelatedFileFinder.findTransitiveImports(project, file)
@@ -79,19 +91,33 @@ class ExportBidirectionalDependenciesAction : AnAction() {
                                 RelatedFileFinder.findDirectImports(project, file)
                             }
                         }
-                        allFiles.addAll(dependencies)
                         LOG.info("Found ${dependencies.size} ${if (includeTransitive) "transitive" else "direct"} dependencies for ${file.name}")
-                    }
+                        dependencies
+                    }.flatten()
+                    
+                    allFiles.addAll(fileDependencies)
                     
                     // Phase 3: Optionally find dependencies of reverse dependencies
-                    if (includeTransitive) {
+                    if (includeTransitive && dependents.isNotEmpty()) {
                         indicator.text = "Finding dependencies of reverse dependencies..."
-                        dependents.forEach { dependent ->
-                            val additionalDeps = ReadAction.compute<List<VirtualFile>, Exception> {
+                        indicator.fraction = 0.7
+                        
+                        // Limit the number of dependents we process to avoid performance issues
+                        val dependentsToProcess = dependents.take(50)
+                        if (dependents.size > 50) {
+                            LOG.info("Processing first 50 of ${dependents.size} dependents for performance")
+                        }
+                        
+                        val additionalDeps = dependentsToProcess.mapIndexed { index, dependent ->
+                            indicator.checkCanceled()
+                            indicator.fraction = 0.7 + (0.2 * index / dependentsToProcess.size)
+                            
+                            ReadAction.compute<List<VirtualFile>, Exception> {
                                 RelatedFileFinder.findDirectImports(project, dependent)
                             }
-                            allFiles.addAll(additionalDeps)
-                        }
+                        }.flatten().toSet()
+                        
+                        allFiles.addAll(additionalDeps)
                     }
                     
                     // Summary
@@ -115,6 +141,7 @@ class ExportBidirectionalDependenciesAction : AnAction() {
                     }
                     
                     indicator.text = "Exporting ${allFiles.size} files..."
+                    indicator.fraction = 0.9
                     
                     // Export all files
                     SmartExportUtils.exportFiles(
