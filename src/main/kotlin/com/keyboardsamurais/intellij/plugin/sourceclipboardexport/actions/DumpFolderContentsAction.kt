@@ -67,33 +67,54 @@ class DumpFolderContentsAction : AnAction() {
 
         ProgressManager.getInstance().run(object : Task.Backgroundable(project, "Exporting Source to Clipboard") {
             override fun run(indicator: ProgressIndicator) {
-                val exporter = SourceExporter(project, settingsState, indicator)
-                val result = runBlocking {
-                    exporter.exportSources(selectedFiles)
-                }
+                try {
+                    val exporter = SourceExporter(project, settingsState, indicator)
+                    val result = runBlocking {
+                        exporter.exportSources(selectedFiles)
+                    }
 
-                indicator.text = "Finalizing..."
-                if (result.content.isEmpty()) {
-                    logger.warn("No file contents were collected for clipboard operation.")
+                    indicator.text = "Finalizing..."
+                    if (result.content.isEmpty()) {
+                        logger.warn("No file contents were collected for clipboard operation.")
+                        NotificationUtils.showNotification(
+                            project,
+                            "Warning",
+                            "No content to copy. Check that your selection isn't:\n" +
+                            "• Filtered out (Settings → Export Source to Clipboard)\n" +
+                            "• Exceeding size limit (${settingsState.maxFileSizeKb}KB)\n" +
+                            "• In ignored folders (${settingsState.ignoredNames.take(3).joinToString(", ")}...)\n" +
+                            "• Excluded by .gitignore",
+                            NotificationType.WARNING
+                        )
+                    } else {
+                        copyToClipboard(result.content, result.processedFileCount, project, selectedFiles)
+                    }
+
+                    logger.info("Action completed: DumpFolderContentsAction")
+                    showOperationSummary(result, settingsState, project)
+
+                    if (result.limitReached) {
+                        notifyFileLimitReached(settingsState.fileCount, project)
+                    }
+                } catch (pce: com.intellij.openapi.progress.ProcessCanceledException) {
+                    // This is a normal cancellation. Rethrow it so the platform can handle it.
+                    logger.info("Export operation was cancelled")
                     NotificationUtils.showNotification(
                         project,
-                        "Warning",
-                        "No content to copy. Check that your selection isn't:\n" +
-                        "• Filtered out (Settings → Export Source to Clipboard)\n" +
-                        "• Exceeding size limit (${settingsState.maxFileSizeKb}KB)\n" +
-                        "• In ignored folders (${settingsState.ignoredNames.take(3).joinToString(", ")}...)\n" +
-                        "• Excluded by .gitignore",
+                        "Export Cancelled",
+                        "The operation was cancelled",
                         NotificationType.WARNING
                     )
-                } else {
-                    copyToClipboard(result.content, result.processedFileCount, project, selectedFiles)
-                }
-
-                logger.info("Action completed: DumpFolderContentsAction")
-                showOperationSummary(result, settingsState, project)
-
-                if (result.limitReached) {
-                    notifyFileLimitReached(settingsState.fileCount, project)
+                    throw pce // Important to rethrow it!
+                } catch (e: Exception) {
+                    // Now, this block will only catch UNEXPECTED exceptions.
+                    logger.error("Error during export operation", e)
+                    NotificationUtils.showNotification(
+                        project,
+                        "Export Error",
+                        "Failed to export source: ${e.message}",
+                        NotificationType.ERROR
+                    )
                 }
             }
         })

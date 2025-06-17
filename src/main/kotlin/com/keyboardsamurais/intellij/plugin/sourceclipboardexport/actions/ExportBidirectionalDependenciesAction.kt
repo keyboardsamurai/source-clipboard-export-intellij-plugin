@@ -149,7 +149,18 @@ class ExportBidirectionalDependenciesAction : AnAction() {
                         allFiles.toTypedArray()
                     )
                     
+                } catch (pce: com.intellij.openapi.progress.ProcessCanceledException) {
+                    // This is a normal cancellation. Rethrow it so the platform can handle it.
+                    LOG.info("Bidirectional dependency analysis was cancelled")
+                    NotificationUtils.showNotification(
+                        project,
+                        "Export Cancelled",
+                        "The operation was cancelled",
+                        com.intellij.notification.NotificationType.WARNING
+                    )
+                    throw pce // Important to rethrow it!
                 } catch (e: Exception) {
+                    // Now, this block will only catch UNEXPECTED exceptions.
                     LOG.error("Error during bidirectional dependency analysis", e)
                     NotificationUtils.showNotification(
                         project,
