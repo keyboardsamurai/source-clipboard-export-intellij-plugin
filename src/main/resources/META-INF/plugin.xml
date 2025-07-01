@@ -94,14 +94,6 @@
                     <li>Filters automatically disabled when filter list is empty</li>
                 </ul>
             </li>
-            <li><b>🖥️ Quick Export Tool Window:</b> Optional visual export interface for power users:
-                <ul>
-                    <li>Interactive file tree with checkboxes for precise selection</li>
-                    <li>Real-time preview of export content with token count and size estimation</li>
-                    <li>Integrated toolbar with export, refresh, clear, and settings actions</li>
-                    <li>Completely optional - can be enabled/disabled in settings or hidden from main UI</li>
-                </ul>
-            </li>
             <li><b>🧠 Smart Export Actions:</b> Context-aware export options for streamlined workflows:
                 <ul>
                     <li><b>Export with Tests:</b> Automatically includes related test files for your selection</li>
@@ -171,10 +163,6 @@
                              displayName="Export Source to Clipboard"
                              id="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceClipboardExportConfigurable" />
         <notificationGroup id="SourceClipboardExport" displayType="BALLOON" />
-        <toolWindow id="ExportSource" 
-                    factoryClass="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.ui.ExportToolWindowFactory"
-                    anchor="right"
-                    canCloseContents="false"/>
     </extensions>
 
     <actions>
