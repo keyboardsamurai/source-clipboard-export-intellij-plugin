@@ -2,7 +2,7 @@
 
 All notable changes to the Export Source to Clipboard plugin will be documented in this file.
 
-## [1.9.0] - 2024-01-XX
+## [2.0.0] - 2025-07-01
 
 ### Added
 - **Export Dependents Action**: Find and export files that import or depend on selected files
@@ -34,7 +34,7 @@ All notable changes to the Export Source to Clipboard plugin will be documented 
 - Export History tracking
 - Export Diff comparison
 - Enhanced notifications
-
+- Removed deprecated APIs
 
 ### Changed
 - Reorganized menu structure with hierarchical grouping
