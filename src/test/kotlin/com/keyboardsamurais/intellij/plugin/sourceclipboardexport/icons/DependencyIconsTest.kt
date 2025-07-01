@@ -1,6 +1,6 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.icons
 
-import com.intellij.util.ui.UIUtil
+import com.intellij.ui.JBColor
 import org.junit.jupiter.api.Test
 import java.awt.image.BufferedImage
 
@@ -48,8 +48,8 @@ class DependencyIconsTest {
     
     @Test
     fun `test icons render correctly regardless of theme`() {
-        // Temporarily set dark theme
-        val originalDarkTheme = UIUtil.isUnderDarcula()
+        // Check current theme brightness
+        val originalBrightTheme = JBColor.isBright()
         try {
             // This is a workaround since we can't directly set dark theme in tests
             // We'll just ensure rendering works regardless of theme

@@ -5,6 +5,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiFile
@@ -173,7 +174,7 @@ object DependencyFinder {
         project: Project,
         alreadyIncludedFiles: Set<VirtualFile> = emptySet()
     ): Set<VirtualFile> {
-        val projectRoot = project.baseDir ?: return emptySet()
+        val projectRoot = ProjectRootManager.getInstance(project).contentRoots.firstOrNull() ?: return emptySet()
         val candidates = ConcurrentHashMap.newKeySet<VirtualFile>()
 
         val searchTerms = ReadAction.compute<Set<String>, Exception> {

@@ -1,7 +1,6 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.icons
 
 import com.intellij.ui.JBColor
-import com.intellij.util.ui.UIUtil
 import java.awt.BasicStroke
 import java.awt.Color
 import java.awt.Component
@@ -54,34 +53,34 @@ object DependencyIcons {
             return arrow
         }
         
-        protected fun getStrokeColor(): Color = if (UIUtil.isUnderDarcula()) {
-            JBColor(Color(180, 180, 180), Color(180, 180, 180))
-        } else {
+        protected fun getStrokeColor(): Color = if (JBColor.isBright()) {
             JBColor(Color(60, 60, 60), Color(60, 60, 60))
+        } else {
+            JBColor(Color(180, 180, 180), Color(180, 180, 180))
         }
         
-        protected fun getSelectedFileColor(): Color = if (UIUtil.isUnderDarcula()) {
-            JBColor(Color(100, 150, 200, 100), Color(100, 150, 200, 100))
-        } else {
+        protected fun getSelectedFileColor(): Color = if (JBColor.isBright()) {
             JBColor(Color(70, 130, 180, 100), Color(70, 130, 180, 100))
+        } else {
+            JBColor(Color(100, 150, 200, 100), Color(100, 150, 200, 100))
         }
         
-        protected fun getDependencyColor(): Color = if (UIUtil.isUnderDarcula()) {
-            JBColor(Color(100, 200, 100, 80), Color(100, 200, 100, 80))
-        } else {
+        protected fun getDependencyColor(): Color = if (JBColor.isBright()) {
             JBColor(Color(50, 180, 50, 80), Color(50, 180, 50, 80))
+        } else {
+            JBColor(Color(100, 200, 100, 80), Color(100, 200, 100, 80))
         }
         
-        protected fun getReverseDependencyColor(): Color = if (UIUtil.isUnderDarcula()) {
-            JBColor(Color(200, 100, 100, 80), Color(200, 100, 100, 80))
-        } else {
+        protected fun getReverseDependencyColor(): Color = if (JBColor.isBright()) {
             JBColor(Color(200, 50, 50, 80), Color(200, 50, 50, 80))
+        } else {
+            JBColor(Color(200, 100, 100, 80), Color(200, 100, 100, 80))
         }
         
-        protected fun getArrowColor(): Color = if (UIUtil.isUnderDarcula()) {
-            JBColor(Color(160, 160, 160), Color(160, 160, 160))
-        } else {
+        protected fun getArrowColor(): Color = if (JBColor.isBright()) {
             JBColor(Color(80, 80, 80), Color(80, 80, 80))
+        } else {
+            JBColor(Color(160, 160, 160), Color(160, 160, 160))
         }
     }
 
