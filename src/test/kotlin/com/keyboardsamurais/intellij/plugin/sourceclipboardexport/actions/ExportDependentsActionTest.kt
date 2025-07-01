@@ -6,7 +6,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 import io.mockk.verify
 import org.junit.jupiter.api.AfterEach
@@ -35,9 +34,9 @@ class ExportDependentsActionTest {
     
     @Test
     fun `test action presentation text and description`() {
-        // Verify the action is properly initialized
-        assert(action.templatePresentation.text == "Dependents (What uses this)")
-        assert(action.templatePresentation.description == "Export files that import or depend on the selected files")
+        // Verify the action is properly initialized with new values
+        assert(action.templatePresentation.text == "Export Dependents")
+        assert(action.templatePresentation.description == "Export files that depend on the selected files")
     }
     
     @Test
@@ -47,15 +46,11 @@ class ExportDependentsActionTest {
         every { event.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) } returns arrayOf(file)
         every { file.isDirectory } returns false
         
-        // Mock ReadAction - return true since we have a non-directory file
-        mockkStatic("com.intellij.openapi.application.ReadAction")
-        every { com.intellij.openapi.application.ReadAction.compute<Boolean, Exception>(any()) } returns true
-        
         // When
         action.update(event)
         
-        // Then
-        verify { event.presentation.isEnabled = true }
+        // Then - now checks isEnabledAndVisible instead of isEnabled
+        verify { event.presentation.isEnabledAndVisible = true }
     }
     
     @Test
@@ -68,7 +63,7 @@ class ExportDependentsActionTest {
         action.update(event)
         
         // Then
-        verify { event.presentation.isEnabled = false }
+        verify { event.presentation.isEnabledAndVisible = false }
     }
     
     @Test
@@ -81,7 +76,7 @@ class ExportDependentsActionTest {
         action.update(event)
         
         // Then
-        verify { event.presentation.isEnabled = false }
+        verify { event.presentation.isEnabledAndVisible = false }
     }
     
     @Test
@@ -91,15 +86,11 @@ class ExportDependentsActionTest {
         every { event.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) } returns arrayOf(file)
         every { file.isDirectory } returns true
         
-        // Mock ReadAction - return value based on isDirectory mock
-        mockkStatic("com.intellij.openapi.application.ReadAction")
-        every { com.intellij.openapi.application.ReadAction.compute<Boolean, Exception>(any()) } returns false
-        
         // When
         action.update(event)
         
         // Then
-        verify { event.presentation.isEnabled = false }
+        verify { event.presentation.isEnabledAndVisible = false }
     }
     
     @Test
@@ -112,15 +103,11 @@ class ExportDependentsActionTest {
         every { event.project } returns project
         every { event.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) } returns arrayOf(directory, file)
         
-        // Mock ReadAction - return true since we have at least one non-directory file
-        mockkStatic("com.intellij.openapi.application.ReadAction")
-        every { com.intellij.openapi.application.ReadAction.compute<Boolean, Exception>(any()) } returns true
-        
         // When
         action.update(event)
         
         // Then
-        verify { event.presentation.isEnabled = true }
+        verify { event.presentation.isEnabledAndVisible = true }
     }
     
     @Test

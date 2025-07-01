@@ -8,54 +8,52 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.psi.PsiFile
-import com.intellij.psi.PsiManager
-import com.intellij.psi.PsiNameIdentifierOwner
+import com.intellij.psi.*
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.searches.ReferencesSearch
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Utility class for finding dependencies and reverse dependencies between files.
- * This implementation uses a hybrid approach for optimal performance and accuracy:
- * 1. A fast, text-based search acts as a pre-filter to find "candidate" files.
- * 2. A precise, PSI-based `ReferencesSearch` is then run only on that small set of candidates.
- * This avoids the performance bottleneck of running PSI searches on the entire project.
+ * Utility for finding dependencies (imports/references) and dependents (reverse dependencies).
+ * 
+ * This uses a hybrid approach:
+ * 1. Fast text-based pre-filtering to find candidate files
+ * 2. Accurate PSI-based search on the filtered candidate set
+ * 
+ * This is much faster than doing PSI search on all project files.
  */
 object DependencyFinder {
-    private val LOG = Logger.getInstance(DependencyFinder::class.java)
 
-    // Cache for the final set of dependent files
+    private val LOG = Logger.getInstance(DependencyFinder::class.java)
     private val dependentsCache = ConcurrentHashMap<String, Set<VirtualFile>>()
+    
+    // Configuration constants
+    private const val MAX_RESULTS_PER_SEARCH = 100
+    private const val MAX_CONCURRENT_PSI_SEARCHES = 2
+    private const val ELEMENT_BATCH_SIZE = 20
+    private const val MAX_FILE_SIZE_BYTES = 500_000
+    private const val MAX_ELEMENTS_PER_FILE = 50
+    private const val MAX_TRAVERSAL_DEPTH = 3
+    private val SKIP_DIRS = setOf("node_modules", ".git", "build", "dist", "target", "out", ".idea")
 
     /**
-     * Finds all files that depend on (import/use) the given files using a hybrid text and PSI search.
-     *
-     * @param files The files to find dependents for.
-     * @param project The current project.
-     * @param alreadyIncludedFiles Optional set of files that are already going to be included in the export.
-     * @param maxResults Optional maximum number of results to return (for early termination).
-     * @return A set of files that are verified to depend on the input files.
+     * Finds files that depend on the given source files.
+     * Uses hybrid search for better performance.
      */
     suspend fun findDependents(
-        files: Array<VirtualFile>, 
+        files: Array<VirtualFile>,
         project: Project,
         alreadyIncludedFiles: Set<VirtualFile> = emptySet(),
-        maxResults: Int = DependencyFinderConfig.maxResultsPerSearch
+        maxResults: Int = MAX_RESULTS_PER_SEARCH
     ): Set<VirtualFile> = withContext(Dispatchers.IO) {
         LOG.warn("Starting hybrid dependency search for ${files.size} files.")
         val startTime = System.currentTimeMillis()
 
         val cacheKey = files.map { it.path }.sorted().joinToString(";")
-        if (DependencyFinderConfig.enableCaching && dependentsCache.containsKey(cacheKey)) {
+        if (dependentsCache.containsKey(cacheKey)) {
             LOG.warn("Returning cached dependents for selection in ${System.currentTimeMillis() - startTime}ms.")
             return@withContext dependentsCache[cacheKey]!!
         }
@@ -87,7 +85,7 @@ object DependencyFinder {
         }
         
         // Limit concurrent PSI operations to prevent IDE freeze
-        val concurrencyLimit = DependencyFinderConfig.maxConcurrentPsiSearches
+        val concurrencyLimit = MAX_CONCURRENT_PSI_SEARCHES
         val semaphore = Semaphore(concurrencyLimit)
 
         coroutineScope {
@@ -99,8 +97,8 @@ object DependencyFinder {
                         // Check for cancellation
                         ProgressManager.checkCanceled()
                         
-                        // Early termination if enabled and we've found enough results
-                        if (DependencyFinderConfig.enableEarlyTermination && resultsFound.get() >= maxResults) {
+                        // Early termination if we've found enough results
+                        if (resultsFound.get() >= maxResults) {
                             return@async
                         }
                         
@@ -113,24 +111,18 @@ object DependencyFinder {
                         if (elementsToSearch.isEmpty()) return@async
 
                         // Process elements in batches for better performance
-                        elementsToSearch.chunked(DependencyFinderConfig.elementBatchSize).forEach { batch ->
+                        elementsToSearch.chunked(ELEMENT_BATCH_SIZE).forEach { batch ->
                             // Check cancellation between batches
                             ProgressManager.checkCanceled()
                             
-                            if (DependencyFinderConfig.enableEarlyTermination && resultsFound.get() >= maxResults) return@forEach
+                            if (resultsFound.get() >= maxResults) return@forEach
                             
                             val references = ReadAction.compute<List<VirtualFile>, Exception> {
                                 batch.flatMap { element ->
                                     ReferencesSearch.search(element, searchScope, false)
                                         .mapNotNull { it.element.containingFile?.virtualFile }
                                         .filter { it.isValid && it != file && it !in alreadyIncludedFiles }
-                                        .let { results ->
-                                            if (DependencyFinderConfig.enableEarlyTermination) {
-                                                results.take(maxResults - resultsFound.get())
-                                            } else {
-                                                results
-                                            }
-                                        }
+                                        .take(maxResults - resultsFound.get())
                                 }
                             }
                             
@@ -158,9 +150,7 @@ object DependencyFinder {
         val totalTime = System.currentTimeMillis() - startTime
         LOG.warn("Phase 2 (PSI Search) completed. Found ${result.size} verified dependent files. Total time: ${totalTime}ms.")
 
-        if (DependencyFinderConfig.enableCaching) {
-            dependentsCache[cacheKey] = result
-        }
+        dependentsCache[cacheKey] = result
 
         return@withContext result
     }
@@ -193,7 +183,7 @@ object DependencyFinder {
         val filesToScan = mutableListOf<VirtualFile>()
         val inputFilesSet = sourceFiles.toSet()
         VfsUtil.iterateChildrenRecursively(projectRoot,
-            { file -> !file.isDirectory || file.name !in DependencyFinderConfig.skipDirs },
+            { file -> !file.isDirectory || file.name !in SKIP_DIRS },
             { file ->
                 if (!file.isDirectory && file.extension in setOf("js", "jsx", "ts", "tsx", "kt", "java", "py", "vue", "svelte", "xml", "yml", "yaml")) {
                     // Skip files that are already in the input set or already included
@@ -208,7 +198,7 @@ object DependencyFinder {
             val jobs = filesToScan.map { fileToScan ->
                 async(Dispatchers.IO) {
                     try {
-                        if (fileToScan.length > DependencyFinderConfig.maxFileSizeBytes) return@async
+                        if (fileToScan.length > MAX_FILE_SIZE_BYTES) return@async
                         val content = VfsUtil.loadText(fileToScan)
                         if (combinedPattern.containsMatchIn(content)) {
                             candidates.add(fileToScan)
@@ -249,34 +239,48 @@ object DependencyFinder {
      */
     private fun findReferenceableElementsOptimized(file: PsiFile): List<com.intellij.psi.PsiElement> {
         val elements = mutableListOf<com.intellij.psi.PsiElement>()
-        var elementCount = 0
-        val maxElements = DependencyFinderConfig.maxElementsPerFile
+        val maxElements = MAX_ELEMENTS_PER_FILE
         
-        class DepthLimitedVisitor(private val maxDepth: Int) : com.intellij.psi.PsiRecursiveElementVisitor() {
-            private var currentDepth = 0
-            
-            override fun visitElement(element: com.intellij.psi.PsiElement) {
-                if (currentDepth >= maxDepth || elementCount >= maxElements) return
-                
-                if (element is PsiNameIdentifierOwner && element.name != null) {
-                    elements.add(element)
-                    elementCount++
-                }
-                
-                // Only visit children of top-level or near-top-level elements
-                if (currentDepth < maxDepth - 1) {
-                    currentDepth++
-                    super.visitElement(element)
-                    currentDepth--
-                }
-            }
+        // First, try to get the top-level elements
+        file.children.filterIsInstance<PsiNameIdentifierOwner>().take(maxElements).forEach {
+            elements.add(it)
         }
         
-        file.accept(DepthLimitedVisitor(DependencyFinderConfig.maxTraversalDepth))
+        // If we haven't reached the limit, do a limited recursive search
+        if (elements.size < maxElements) {
+            file.accept(DepthLimitedVisitor(MAX_TRAVERSAL_DEPTH, elements, maxElements))
+        }
         
-        // Always add the file itself
+        // Always add the file itself for import references
         elements.add(file)
-        return elements
+        
+        return elements.take(maxElements)
+    }
+
+    /**
+     * PSI visitor that limits traversal depth and element count
+     */
+    private class DepthLimitedVisitor(
+        private val maxDepth: Int,
+        private val elements: MutableList<com.intellij.psi.PsiElement>,
+        private val maxElements: Int
+    ) : com.intellij.psi.PsiRecursiveElementVisitor() {
+        private var currentDepth = 0
+        
+        override fun visitElement(element: com.intellij.psi.PsiElement) {
+            if (currentDepth >= maxDepth || elements.size >= maxElements) return
+            
+            if (element is PsiNameIdentifierOwner && element.name != null) {
+                elements.add(element)
+            }
+            
+            // Only visit children of top-level or near-top-level elements
+            if (currentDepth < maxDepth - 1 && elements.size < maxElements) {
+                currentDepth++
+                super.visitElement(element)
+                currentDepth--
+            }
+        }
     }
 
     /**
@@ -298,16 +302,16 @@ object DependencyFinder {
      * Warn if configuration might cause performance issues
      */
     fun validateConfiguration(project: Project, selectedFilesCount: Int) {
-        if (selectedFilesCount > 10 && DependencyFinderConfig.maxConcurrentPsiSearches > 2) {
-            LOG.warn("WARNING: High concurrency (${DependencyFinderConfig.maxConcurrentPsiSearches}) with many files ($selectedFilesCount) may cause IDE freezing")
+        if (selectedFilesCount > 10 && MAX_CONCURRENT_PSI_SEARCHES > 2) {
+            LOG.warn("WARNING: High concurrency ($MAX_CONCURRENT_PSI_SEARCHES) with many files ($selectedFilesCount) may cause IDE freezing")
         }
         
-        if (!DependencyFinderConfig.enableEarlyTermination && selectedFilesCount > 5) {
-            LOG.warn("WARNING: Early termination disabled with multiple files may cause performance issues")
+        if (selectedFilesCount > 5) {
+            LOG.warn("WARNING: Processing $selectedFilesCount files may be slow")
         }
         
-        if (DependencyFinderConfig.maxElementsPerFile > 100) {
-            LOG.warn("WARNING: High maxElementsPerFile (${DependencyFinderConfig.maxElementsPerFile}) may cause slow PSI parsing")
+        if (MAX_ELEMENTS_PER_FILE > 100) {
+            LOG.warn("WARNING: High maxElementsPerFile ($MAX_ELEMENTS_PER_FILE) may cause slow PSI parsing")
         }
     }
 }
