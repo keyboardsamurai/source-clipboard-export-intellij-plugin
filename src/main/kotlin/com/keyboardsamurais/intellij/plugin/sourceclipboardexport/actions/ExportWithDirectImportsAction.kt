@@ -8,7 +8,13 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.vfs.VirtualFile
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.RelatedFileFinder
 
-class ExportWithDirectImportsAction : AnAction("Include Direct Imports", "Export selected files with direct imports", null) {
+class ExportWithDirectImportsAction : AnAction() {
+    
+    init {
+        templatePresentation.text = "Include Direct Dependencies"
+        templatePresentation.description = "Export selected files + their direct imports only"
+        templatePresentation.icon = com.keyboardsamurais.intellij.plugin.sourceclipboardexport.icons.DependencyIcons.DIRECT_IMPORTS
+    }
     
     private val logger = Logger.getInstance(ExportWithDirectImportsAction::class.java)
     

@@ -10,50 +10,29 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.Export
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportDependentsAction
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportWithDirectImportsAction
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportWithTransitiveImportsAction
-import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.icons.DependencyIcons
 
 class DependencyExportGroup : ActionGroup("Dependencies", "Export with dependency relationships", null) {
+    
+    private val exportWithDirectImportsAction = ExportWithDirectImportsAction()
+    private val exportWithTransitiveImportsAction = ExportWithTransitiveImportsAction()
+    private val exportDependentsAction = ExportDependentsAction()
+    private val exportBidirectionalDependenciesAction = ExportBidirectionalDependenciesAction()
     
     init {
         templatePresentation.setPopupGroup(true)
     }
     
     override fun getChildren(e: AnActionEvent?): Array<AnAction> {
-        // Update action presentations with better labels and icons
-        val directImportsAction = ExportWithDirectImportsAction().apply {
-            templatePresentation.text = "Include Direct Dependencies"
-            templatePresentation.description = "Export selected files + their direct imports only"
-            templatePresentation.icon = DependencyIcons.DIRECT_IMPORTS
-        }
-        
-        val transitiveImportsAction = ExportWithTransitiveImportsAction().apply {
-            templatePresentation.text = "Include Transitive Dependencies"
-            templatePresentation.description = "Export selected files + complete dependency tree"
-            templatePresentation.icon = DependencyIcons.TRANSITIVE_IMPORTS
-        }
-        
-        val dependentsAction = ExportDependentsAction().apply {
-            templatePresentation.text = "Include Reverse Dependencies"
-            templatePresentation.description = "Export selected files + all files that import/use them"
-            templatePresentation.icon = DependencyIcons.DEPENDENTS
-        }
-        
-        val bidirectionalAction = ExportBidirectionalDependenciesAction().apply {
-            templatePresentation.text = "Include Bidirectional Dependencies"
-            templatePresentation.description = "Export selected files + dependencies + reverse dependencies"
-            templatePresentation.icon = DependencyIcons.BIDIRECTIONAL
-        }
-        
         return arrayOf(
             // Outgoing dependencies
-            directImportsAction,
-            transitiveImportsAction,
+            exportWithDirectImportsAction,
+            exportWithTransitiveImportsAction,
             Separator.getInstance(),
             // Incoming dependencies
-            dependentsAction,
+            exportDependentsAction,
             Separator.getInstance(),
             // Combined
-            bidirectionalAction
+            exportBidirectionalDependenciesAction
         )
     }
     

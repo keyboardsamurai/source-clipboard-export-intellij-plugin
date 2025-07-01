@@ -35,8 +35,8 @@ class ExportDependentsActionTest {
     @Test
     fun `test action presentation text and description`() {
         // Verify the action is properly initialized with new values
-        assert(action.templatePresentation.text == "Export Dependents")
-        assert(action.templatePresentation.description == "Export files that depend on the selected files")
+        assert(action.templatePresentation.text == "Include Reverse Dependencies")
+        assert(action.templatePresentation.description == "Export selected files + all files that import/use them")
     }
     
     @Test

@@ -6,10 +6,15 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.openapi.vfs.VirtualFileManager
-import java.io.File
+import git4idea.history.GitHistoryUtils
+import git4idea.repo.GitRepositoryManager
 
-class ExportLastCommitAction : AnAction("Last Commit Files", "Export files from the most recent commit", null) {
+class ExportLastCommitAction : AnAction() {
+    
+    init {
+        templatePresentation.text = "Last Commit Files"
+        templatePresentation.description = "Export files from the most recent commit"
+    }
     
     private val logger = Logger.getInstance(ExportLastCommitAction::class.java)
     
@@ -48,52 +53,27 @@ class ExportLastCommitAction : AnAction("Last Commit Files", "Export files from 
     }
     
     private fun getFilesFromLastCommit(project: Project): List<VirtualFile> {
-        val files = mutableListOf<VirtualFile>()
+        val repositoryManager = GitRepositoryManager.getInstance(project)
         
-        try {
-            // Get the project base directory
-            val projectDir = project.basePath ?: return emptyList()
-            
-            // Check if this is a git repository
-            val gitDir = File(projectDir, ".git")
-            if (!gitDir.exists() || !gitDir.isDirectory) {
-                logger.warn("No Git repository found in project")
-                return emptyList()
-            }
-            
-            // Run git command to get list of files changed in last commit
-            val processBuilder = ProcessBuilder()
-                .command("git", "diff", "--name-only", "HEAD~1", "HEAD")
-                .directory(File(projectDir))
-            
-            val process = processBuilder.start()
-            val result = process.inputStream.bufferedReader().readText()
-            val exitCode = process.waitFor()
-            
-            if (exitCode == 0) {
-                // Process the output - each line is a file path
-                result.lines().forEach { line ->
-                    if (line.isNotBlank()) {
-                        // Convert relative path to VirtualFile
-                        val filePath = "$projectDir/${line.trim()}"
-                        val virtualFile = VirtualFileManager.getInstance()
-                            .findFileByUrl("file://$filePath")
-                        
-                        if (virtualFile != null && virtualFile.exists() && !virtualFile.isDirectory) {
-                            files.add(virtualFile)
-                            logger.debug("Added file from last commit: ${virtualFile.path}")
-                        }
-                    }
-                }
-            } else {
-                logger.warn("Failed to get files from last commit: exit code $exitCode")
-            }
-            
-        } catch (e: Exception) {
-            logger.error("Error getting files from last commit", e)
+        if (repositoryManager.repositories.isEmpty()) {
+            logger.warn("No Git repositories found in project")
+            return emptyList()
         }
         
-        return files
+        return repositoryManager.repositories.flatMap { repo ->
+            try {
+                // Get the last commit - only need 1 commit, not 2
+                val commits = GitHistoryUtils.history(project, repo.root, "-n", "1")
+                
+                commits.firstOrNull()?.changes?.mapNotNull { change ->
+                    // The change object holds the virtual file directly
+                    change.afterRevision?.file?.virtualFile?.takeIf { it.exists() && !it.isDirectory }
+                } ?: emptyList()
+            } catch (e: Exception) {
+                logger.error("Could not retrieve history for repository ${repo.root.path}", e)
+                emptyList()
+            }
+        }.distinct()
     }
     
     override fun update(e: AnActionEvent) {
@@ -103,10 +83,10 @@ class ExportLastCommitAction : AnAction("Last Commit Files", "Export files from 
             return
         }
         
-        // Check if project has Git
+        // Check if project has Git repositories
         val hasGit = try {
-            val projectDir = project.basePath
-            projectDir != null && File(projectDir, ".git").exists()
+            val repositoryManager = GitRepositoryManager.getInstance(project)
+            repositoryManager.repositories.isNotEmpty()
         } catch (e: Exception) {
             false
         }

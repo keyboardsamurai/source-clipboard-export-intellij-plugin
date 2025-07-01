@@ -23,6 +23,7 @@ dependencies {
         intellijIdeaCommunity("2024.2.4")
         bundledPlugin("com.intellij.java")
         bundledPlugin("org.jetbrains.kotlin")
+        bundledPlugin("Git4Idea")
 
         pluginVerifier()
         zipSigner()

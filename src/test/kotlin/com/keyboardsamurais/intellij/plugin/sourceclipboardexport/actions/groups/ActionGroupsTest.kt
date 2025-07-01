@@ -174,11 +174,12 @@ class ActionGroupsTest {
         assert(actions[2].templatePresentation.description == "Export selected files + all files that import/use them")
         assert(actions[3].templatePresentation.description == "Export selected files + dependencies + reverse dependencies")
         
-        // Check icons are set
-        assert(actions[0].templatePresentation.icon != null)
-        assert(actions[1].templatePresentation.icon != null)
-        assert(actions[2].templatePresentation.icon != null)
-        assert(actions[3].templatePresentation.icon != null)
+        // Check icons are set (they should be non-null in production)
+        // Note: Icons are custom Swing components that should work in tests
+        assert(actions[0].templatePresentation.icon != null) { "Direct imports icon should not be null" }
+        assert(actions[1].templatePresentation.icon != null) { "Transitive imports icon should not be null" }
+        assert(actions[2].templatePresentation.icon != null) { "Dependents icon should not be null" }
+        assert(actions[3].templatePresentation.icon != null) { "Bidirectional icon should not be null" }
     }
     
     // RelatedResourcesExportGroup Tests

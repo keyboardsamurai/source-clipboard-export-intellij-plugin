@@ -8,7 +8,12 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.vfs.VirtualFile
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.RelatedFileFinder
 
-class ExportWithConfigsAction : AnAction("Include Configuration", "Export selected files with configuration files", null) {
+class ExportWithConfigsAction : AnAction() {
+    
+    init {
+        templatePresentation.text = "Include Configuration"
+        templatePresentation.description = "Export selected files with configuration files"
+    }
     
     private val logger = Logger.getInstance(ExportWithConfigsAction::class.java)
     

@@ -25,8 +25,8 @@ class ExportBidirectionalDependenciesAction : AnAction() {
 
     init {
         templatePresentation.text = "Include Bidirectional Dependencies"
-        templatePresentation.description = "Export selected files with both dependencies and reverse dependencies"
-        // Icon will be set in DependencyExportGroup
+        templatePresentation.description = "Export selected files + dependencies + reverse dependencies"
+        templatePresentation.icon = com.keyboardsamurais.intellij.plugin.sourceclipboardexport.icons.DependencyIcons.BIDIRECTIONAL
     }
 
     override fun actionPerformed(e: AnActionEvent) {

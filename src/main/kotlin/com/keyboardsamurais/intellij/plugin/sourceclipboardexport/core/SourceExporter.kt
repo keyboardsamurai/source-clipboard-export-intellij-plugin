@@ -10,7 +10,6 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.gitignore
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.AppConstants
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.FileUtils
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.StringUtils
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -101,6 +100,7 @@ class SourceExporter(
 
         // Use a map to store local buffers for each coroutine
         val localBuffers = ConcurrentHashMap<Long, MutableList<String>>()
+        val visitedFiles = ConcurrentHashMap.newKeySet<VirtualFile>() // Use a concurrent set for visited tracking
 
         coroutineScope {
             val scopeJob = SupervisorJob()
@@ -108,6 +108,7 @@ class SourceExporter(
             // This prevents excessive thread creation and context switching
             val limitedDispatcher = Dispatchers.IO.limitedParallelism(Runtime.getRuntime().availableProcessors()) // Use system CPU count
 
+            // Launch a coroutine for each initially selected file/directory
             selectedFiles.forEach { file ->
                 launch(scopeJob + limitedDispatcher) {
                     ensureActive()
@@ -116,8 +117,8 @@ class SourceExporter(
                     // Store the buffer in the map using a unique task ID as the key
                     val taskId = taskCounter.incrementAndGet().toLong()
                     localBuffers[taskId] = localBuffer
-                    // Process the file with the local buffer
-                    processEntry(file, this, localBuffer)
+                    // processEntry will handle recursion and visited checks
+                    processEntry(file, this, localBuffer, visitedFiles)
                 }
             }
             scopeJob.children.forEach { it.join() }
@@ -263,8 +264,7 @@ class SourceExporter(
         val isValid: Boolean,
         val exists: Boolean,
         val length: Long,
-        val extension: String?,
-        val children: Array<VirtualFile>?
+        val extension: String?
     )
 
     /**
@@ -279,26 +279,27 @@ class SourceExporter(
                 isValid = file.isValid,
                 exists = file.exists(),
                 length = file.length,
-                extension = file.extension,
-                children = if (file.isDirectory) file.children else null
+                extension = file.extension
             )
         }
     }
 
     /**
-     * Processes a single entry (file or directory), performing all exclusion checks.
-     * This function is recursive for directories.
+     * Processes a single file or directory, performing all exclusion checks.
+     * Handles directories recursively in the background to avoid UI freezing.
      *
      * @param file The VirtualFile to process.
      * @param scope The CoroutineScope for cooperative cancellation.
      * @param localBuffer The local buffer to add file contents to.
+     * @param visitedFiles The concurrent set to track visited files and prevent duplicates.
      */
-    private suspend fun processEntry(file: VirtualFile, scope: CoroutineScope, localBuffer: MutableList<String>) {
+    private suspend fun processEntry(file: VirtualFile, scope: CoroutineScope, localBuffer: MutableList<String>, visitedFiles: MutableSet<VirtualFile>) {
         scope.ensureActive() // Check cancellation at the start
 
-        // --- Basic Checks ---
-        if (fileCount.get() >= settings.fileCount) {
-            logger.debug("File limit reached before processing entry. Skipping.")
+        // --- FIX: Perform the visited check AT THE TOP and make it atomic ---
+        // This is the most critical change to prevent race conditions.
+        if (!visitedFiles.add(file)) {
+            logger.trace("Skipping already visited/claimed entry: ${file.path}")
             return
         }
         
@@ -310,46 +311,89 @@ class SourceExporter(
             return
         }
 
-        // Check cancellation again after basic checks
-        scope.ensureActive()
+        // --- Handle directories recursively ---
+        if (fileProps.isDirectory) {
+            // Check for ignored directory names (e.g., "node_modules", "build")
+            if (fileProps.name in settings.ignoredNames) {
+                logger.info("Skipping ignored directory by name: ${fileProps.path}")
+                excludedByIgnoredNameCount.incrementAndGet()
+                return
+            }
+            
+            // Check .gitignore for the directory itself
+            try {
+                val isIgnoredByGit = ReadAction.compute<Boolean, Exception> {
+                    hierarchicalGitignoreParser.isIgnored(file)
+                }
+                if (isIgnoredByGit) {
+                    logger.info("Skipping ignored directory by .gitignore: ${fileProps.path}")
+                    excludedByGitignoreCount.incrementAndGet()
+                    return
+                }
+            } catch (e: Exception) {
+                logger.warn("Error checking gitignore status for directory '${fileProps.path}'. Proceeding with traversal.", e)
+            }
 
-        // --- Calculate Relative Path (relative to project root for the single parser) ---
+            logger.debug("Processing directory: ${fileProps.path}")
+            val children = ReadAction.compute<Array<VirtualFile>?, Exception> { file.children }
+            children?.forEach { child ->
+                scope.ensureActive()
+                // The recursive call will handle the visited check for each child
+                processEntry(child, scope, localBuffer, visitedFiles)
+            }
+            return // End processing for this directory entry
+        }
+
+        // --- It's a file, proceed with file-specific checks ---
+        
+        // Check file limit
+        if (fileCount.get() >= settings.fileCount) {
+            logger.debug("File limit reached. Skipping file: ${fileProps.path}")
+            return
+        }
+
+        // The rest of the file processing logic (ignored names, gitignore, size, binary, etc.)
+        // can now safely assume it's only dealing with files.
+        processFileWithChecks(file, fileProps, scope, localBuffer)
+    }
+    
+    /**
+     * Processes a single file after basic checks have passed.
+     * This new helper function contains the logic that was previously in processEntry.
+     *
+     * @param file The file VirtualFile.
+     * @param fileProps The pre-read file properties.
+     * @param scope The coroutine scope.
+     * @param localBuffer The local buffer to add file contents to.
+     */
+    private suspend fun processFileWithChecks(file: VirtualFile, fileProps: FileProperties, scope: CoroutineScope, localBuffer: MutableList<String>) {
+        // Calculate relative path for this file
         val relativePath = try {
             ReadAction.compute<String?, Exception> {
-                FileUtils.getRelativePath(file, project) // Assumes this gives path relative to project root
+                FileUtils.getRelativePath(file, project)
             }
         } catch (e: Exception) {
             logger.error("Error calculating relative path for: ${fileProps.path}", e)
-            null // Handle error case
+            null
         }
 
         if (relativePath == null) {
             logger.warn("Could not determine relative path for ${fileProps.path}. Skipping gitignore check.")
-            // Decide whether to proceed without gitignore check or skip entirely
-            // Let's proceed for now, but log it clearly.
         }
 
-        // Check cancellation again after calculating relative path
+        // Check cancellation after calculating relative path
         scope.ensureActive()
 
-        // --- Logging for Gitignore Debugging ---
-        logger.info("Processing entry: '${fileProps.name}' | Relative Path: '$relativePath' | isDirectory: ${fileProps.isDirectory}")
-        // --- End Logging ---
+        logger.info("Processing file: '${fileProps.name}' | Relative Path: '$relativePath'")
 
-
-        // --- Exclusion Checks ---
-
-        // 1. Explicit Ignored Names (Fastest check)
+        // --- Exclusion Checks for Files ---
         if (fileProps.name in settings.ignoredNames) {
-            logger.info("Skipping ignored file/directory by name: ${fileProps.path}")
+            logger.info("Skipping ignored file by name: ${fileProps.path}")
             excludedByIgnoredNameCount.incrementAndGet()
             return
         }
-
-        // Check cancellation again after ignored names check
-        scope.ensureActive()
-
-        // 2. Gitignore Check (using hierarchical parser)
+        
+        // Gitignore Check
         try {
             val isIgnoredByGit = ReadAction.compute<Boolean, Exception> {
                 hierarchicalGitignoreParser.isIgnored(file)
@@ -357,7 +401,7 @@ class SourceExporter(
             if (isIgnoredByGit) {
                 logger.info(">>> Gitignore Match: YES. Skipping '${fileProps.path}' based on hierarchical .gitignore rules.")
                 excludedByGitignoreCount.incrementAndGet()
-                return // Skip this entry entirely
+                return
             } else {
                 logger.info(">>> Gitignore Match: NO. Proceeding with '${fileProps.path}'.")
             }
@@ -368,51 +412,11 @@ class SourceExporter(
         // Check cancellation again after gitignore check
         scope.ensureActive()
 
-        // --- Process Valid, Non-Ignored Entry ---
-        if (fileProps.isDirectory) {
-            // Process directory contents recursively
-            logger.debug("Processing directory contents: ${fileProps.path}")
-            processDirectoryChildren(file, fileProps, scope, localBuffer)
-        } else {
-            // Process a single file (pass the already calculated relative path)
-            logger.debug("Processing file: ${fileProps.path}")
-            processSingleFile(file, fileProps, relativePath ?: fileProps.name, scope, localBuffer) // Pass relative path or fallback
-        }
+        // Process the file - delegate to the existing processSingleFile method
+        logger.debug("Processing file: ${fileProps.path}")
+        processSingleFile(file, fileProps, relativePath ?: fileProps.name, scope, localBuffer)
     }
 
-    /**
-     * Iterates over directory children and calls processEntry for each.
-     * 
-     * @param directory The directory to process.
-     * @param dirProps The pre-read directory properties.
-     * @param scope The coroutine scope.
-     * @param localBuffer The local buffer to add file contents to.
-     */
-    private suspend fun processDirectoryChildren(directory: VirtualFile, dirProps: FileProperties, scope: CoroutineScope, localBuffer: MutableList<String>) {
-        try {
-            val children = dirProps.children ?: return // No children or error reading them
-            for (child in children) {
-                scope.ensureActive() // Check cancellation before processing each child
-
-                // Check limit again before launching recursive call
-                if (fileCount.get() >= settings.fileCount) {
-                    logger.debug("File limit reached within directory ${dirProps.path}. Stopping recursion.")
-                    return // Stop processing this directory further
-                }
-
-                // Recursively process children - processEntry will handle all checks for the child
-                processEntry(child, scope, localBuffer)
-
-                // Check cancellation after processing each child
-                scope.ensureActive()
-            }
-        } catch (ce: CancellationException) {
-            logger.info("Directory processing cancelled: ${dirProps.path}")
-            throw ce // Re-throw cancellation to propagate up
-        } catch (e: Exception) {
-            logger.error("Error processing directory children: ${dirProps.path}", e)
-        }
-    }
 
     /**
      * Processes a single file after basic ignore checks have passed.

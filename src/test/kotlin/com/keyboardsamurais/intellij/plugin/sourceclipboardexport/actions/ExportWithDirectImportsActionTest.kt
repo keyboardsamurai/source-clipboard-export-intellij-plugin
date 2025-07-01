@@ -27,8 +27,8 @@ class ExportWithDirectImportsActionTest {
     
     @Test
     fun `test action presentation text and description`() {
-        assert(action.templatePresentation.text == "Include Direct Imports")
-        assert(action.templatePresentation.description == "Export selected files with direct imports")
+        assert(action.templatePresentation.text == "Include Direct Dependencies")
+        assert(action.templatePresentation.description == "Export selected files + their direct imports only")
     }
     
     @Test

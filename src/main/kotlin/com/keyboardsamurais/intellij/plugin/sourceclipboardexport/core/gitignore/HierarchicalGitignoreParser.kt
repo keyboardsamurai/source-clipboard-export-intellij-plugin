@@ -117,8 +117,8 @@ class HierarchicalGitignoreParser(private val project: Project) : Disposable {
         // Initialize decision as null (undecided)
         var decision: Boolean? = null // null = undecided, true = ignore, false = negate
 
-        // Process parsers in reverse order (leaf to root) to ensure child rules override parent rules
-        for (parser in gitignoreParsers.reversed()) {
+        // Process parsers from root to leaf to ensure child rules override parent rules
+        for (parser in gitignoreParsers) {
             // Calculate the path relative to the .gitignore file's directory
             val gitignoreDir = parser.gitignoreFile.parent
 
@@ -140,19 +140,16 @@ class HierarchicalGitignoreParser(private val project: Project) : Disposable {
                 val result = parser.matchResult(relativeToGitignore, file.isDirectory)
                 logger.debug("  matchResult: $result")
 
-                // Update the decision only if a rule explicitly matched
+                // Update the decision only if a rule explicitly matched.
+                // This allows child rules to override parent decisions.
                 when (result) {
                     GitignoreParser.MatchResult.MATCH_IGNORE -> {
-                        decision = true
-                        logger.debug("  File ${file.path} decision set to IGNORE by ${parser.gitignoreFile.path}")
-                        // Once a child gitignore makes a decision, stop processing
-                        break
+                        decision = true // Set decision to IGNORE
+                        logger.debug("  File ${file.path} decision updated to IGNORE by ${parser.gitignoreFile.path}")
                     }
                     GitignoreParser.MatchResult.MATCH_NEGATE -> {
-                        decision = false
-                        logger.debug("  File ${file.path} decision set to NEGATE (not ignored) by ${parser.gitignoreFile.path}")
-                        // Once a child gitignore makes a decision, stop processing
-                        break
+                        decision = false // Set decision to NEGATE (not ignored)
+                        logger.debug("  File ${file.path} decision updated to NEGATE by ${parser.gitignoreFile.path}")
                     }
                     GitignoreParser.MatchResult.NO_MATCH -> {
                         // Do nothing, keep the decision from the parent parser

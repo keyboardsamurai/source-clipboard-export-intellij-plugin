@@ -9,10 +9,6 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
-import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.VirtualFile
-import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceClipboardExportSettings
-import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.SourceExporter
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.DependencyFinder
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
 import kotlinx.coroutines.runBlocking
@@ -20,7 +16,13 @@ import kotlinx.coroutines.runBlocking
 /**
  * Action to export files that depend on the selected files (reverse dependencies).
  */
-class ExportDependentsAction : AnAction("Export Dependents", "Export files that depend on the selected files", null) {
+class ExportDependentsAction : AnAction() {
+
+    init {
+        templatePresentation.text = "Include Reverse Dependencies"
+        templatePresentation.description = "Export selected files + all files that import/use them"
+        templatePresentation.icon = com.keyboardsamurais.intellij.plugin.sourceclipboardexport.icons.DependencyIcons.DEPENDENTS
+    }
 
     private val logger = Logger.getInstance(ExportDependentsAction::class.java)
 
@@ -77,27 +79,22 @@ class ExportDependentsAction : AnAction("Export Dependents", "Export files that 
                         DependencyFinder.findDependents(sourceFiles, project)
                     }
 
-                    indicator.text = "Exporting ${dependentFiles.size} dependent files..."
-                    
-                    if (dependentFiles.isEmpty()) {
-                        NotificationUtils.showNotification(project, "Export Info", "No dependent files found for the selected files", NotificationType.INFORMATION)
-                        return
-                    }
-
                     // Include original files plus their dependents
                     val allFilesToExport = sourceFiles.toSet() + dependentFiles
-                    val settings = SourceClipboardExportSettings.getInstance().state
-                    val exporter = SourceExporter(project, settings, indicator)
-                    val result = runBlocking {
-                        exporter.exportSources(allFilesToExport.toTypedArray())
+
+                    if (dependentFiles.isEmpty()) {
+                        NotificationUtils.showNotification(
+                            project,
+                            "Export Info",
+                            "No dependent files found. Exporting only the selected files.",
+                            NotificationType.INFORMATION
+                        )
                     }
-                    
-                    NotificationUtils.showNotification(
-                        project, 
-                        "Export Success",
-                        "Exported ${allFilesToExport.size} files (${sourceFiles.size} source + ${dependentFiles.size} dependent files). Processed: ${result.processedFileCount}",
-                        NotificationType.INFORMATION
-                    )
+
+                    indicator.text = "Exporting ${allFilesToExport.size} files..."
+
+                    // Use the centralized export utility for consistent behavior
+                    SmartExportUtils.exportFiles(project, allFilesToExport.toTypedArray())
                     
                 } catch (e: Exception) {
                     logger.error("Failed to find dependent files", e)

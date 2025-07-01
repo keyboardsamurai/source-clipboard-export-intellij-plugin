@@ -257,33 +257,42 @@ object RelatedFileFinder {
     }
     
     private fun findImportedFiles(project: Project, psiFile: PsiFile, transitive: Boolean): List<VirtualFile> {
-        val importedFiles = mutableSetOf<VirtualFile>()
-        val processed = mutableSetOf<VirtualFile>()
-        val toProcess = mutableListOf(psiFile.virtualFile)
+        val allFoundFiles = mutableSetOf<VirtualFile>()
+        val queue = ArrayDeque<VirtualFile>()
         
-        while (toProcess.isNotEmpty()) {
-            val currentFile = toProcess.removeAt(0)
-            if (currentFile in processed) continue
-            processed.add(currentFile)
+        // Initial file
+        queue.add(psiFile.virtualFile)
+        // Use a single set to track visited files to prevent cycles and redundant processing
+        val visited = mutableSetOf(psiFile.virtualFile)
+
+        while (queue.isNotEmpty()) {
+            val currentFile = queue.removeFirst()
             
+            // Don't add the initial file to the results, only its dependencies
+            if (currentFile != psiFile.virtualFile) {
+                allFoundFiles.add(currentFile)
+            }
+
+            // If not transitive, we only process the initial file
+            if (!transitive && currentFile != psiFile.virtualFile) {
+                continue
+            }
+
             val currentPsiFile = ReadAction.compute<PsiFile?, Exception> {
                 PsiManager.getInstance(project).findFile(currentFile)
             } ?: continue
+
             val directImports = extractImportsFromFile(project, currentPsiFile)
             
             directImports.forEach { importedFile ->
-                if (importedFile !in importedFiles) {
-                    importedFiles.add(importedFile)
-                    
-                    // Add to processing queue for transitive imports
-                    if (transitive && importedFile !in processed) {
-                        toProcess.add(importedFile)
-                    }
+                // Add to queue only if it has never been visited before
+                if (visited.add(importedFile)) {
+                    queue.add(importedFile)
                 }
             }
         }
         
-        return importedFiles.toList()
+        return allFoundFiles.toList()
     }
     
     private fun extractImportsFromFile(project: Project, psiFile: PsiFile): List<VirtualFile> {

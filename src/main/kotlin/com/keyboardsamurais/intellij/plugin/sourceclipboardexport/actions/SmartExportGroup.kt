@@ -13,19 +13,24 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.groups
 
 class SmartExportGroup : ActionGroup("Export with Context", "Smart export with related files", null) {
     
+    private val dependencyExportGroup = DependencyExportGroup()
+    private val codeStructureExportGroup = CodeStructureExportGroup()
+    private val relatedResourcesExportGroup = RelatedResourcesExportGroup()
+    private val versionHistoryExportGroup = VersionHistoryExportGroup()
+    
     init {
         templatePresentation.setPopupGroup(true)
     }
     
     override fun getChildren(e: AnActionEvent?): Array<AnAction> {
         return arrayOf(
-            DependencyExportGroup(),
+            dependencyExportGroup,
             Separator.getInstance(),
-            CodeStructureExportGroup(),
+            codeStructureExportGroup,
             Separator.getInstance(),
-            RelatedResourcesExportGroup(),
+            relatedResourcesExportGroup,
             Separator.getInstance(),
-            VersionHistoryExportGroup()
+            versionHistoryExportGroup
         )
     }
     

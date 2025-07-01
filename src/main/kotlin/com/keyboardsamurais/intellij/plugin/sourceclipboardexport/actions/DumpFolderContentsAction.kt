@@ -232,7 +232,6 @@ class DumpFolderContentsAction : AnAction() {
         // Keep the original logic for visibility based on VIRTUAL_FILE_ARRAY
         val isVisible = project != null && !selectedFiles.isNullOrEmpty()
         e.presentation.isEnabledAndVisible = isVisible
-        logger.warn("  -> Setting isEnabledAndVisible to $isVisible")
     }
 
     /**

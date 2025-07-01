@@ -11,15 +11,19 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.Export
 
 class RelatedResourcesExportGroup : ActionGroup("Related Resources", "Export with related resources", null) {
     
+    private val exportWithConfigsAction = ExportWithConfigsAction()
+    private val exportWithResourcesAction = ExportWithResourcesAction()
+    private val exportAllTestsAction = ExportAllTestsAction()
+    
     init {
         templatePresentation.setPopupGroup(true)
     }
     
     override fun getChildren(e: AnActionEvent?): Array<AnAction> {
         return arrayOf(
-            ExportWithConfigsAction(),
-            ExportWithResourcesAction(),
-            ExportAllTestsAction()
+            exportWithConfigsAction,
+            exportWithResourcesAction,
+            exportAllTestsAction
         )
     }
     

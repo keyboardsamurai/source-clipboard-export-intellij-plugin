@@ -10,14 +10,17 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.Export
 
 class VersionHistoryExportGroup : ActionGroup("Version History", "Export based on version control", null) {
     
+    private val exportRecentChangesAction = ExportRecentChangesAction()
+    private val exportLastCommitAction = ExportLastCommitAction()
+    
     init {
         templatePresentation.setPopupGroup(true)
     }
     
     override fun getChildren(e: AnActionEvent?): Array<AnAction> {
         return arrayOf(
-            ExportRecentChangesAction(),
-            ExportLastCommitAction()
+            exportRecentChangesAction,
+            exportLastCommitAction
         )
     }
     

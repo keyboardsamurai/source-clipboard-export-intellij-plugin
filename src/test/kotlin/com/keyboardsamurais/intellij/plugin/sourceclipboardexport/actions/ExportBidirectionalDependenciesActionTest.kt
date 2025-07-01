@@ -31,7 +31,7 @@ class ExportBidirectionalDependenciesActionTest {
     @Test
     fun `test action presentation text and description`() {
         assert(action.templatePresentation.text == "Include Bidirectional Dependencies")
-        assert(action.templatePresentation.description == "Export selected files with both dependencies and reverse dependencies")
+        assert(action.templatePresentation.description == "Export selected files + dependencies + reverse dependencies")
     }
     
     @Test
@@ -106,7 +106,7 @@ class ExportBidirectionalDependenciesActionTest {
         
         // Verify the action is properly configured
         assert(action.templatePresentation.text == "Include Bidirectional Dependencies")
-        assert(action.templatePresentation.description == "Export selected files with both dependencies and reverse dependencies")
+        assert(action.templatePresentation.description == "Export selected files + dependencies + reverse dependencies")
     }
     
     @Test

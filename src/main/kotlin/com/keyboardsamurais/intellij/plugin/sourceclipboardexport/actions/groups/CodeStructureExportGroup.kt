@@ -11,15 +11,19 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.Export
 
 class CodeStructureExportGroup : ActionGroup("Code Structure", "Export with structural relationships", null) {
     
+    private val exportWithTestsAction = ExportWithTestsAction()
+    private val exportWithImplementationsAction = ExportWithImplementationsAction()
+    private val exportCurrentPackageAction = ExportCurrentPackageAction()
+    
     init {
         templatePresentation.setPopupGroup(true)
     }
     
     override fun getChildren(e: AnActionEvent?): Array<AnAction> {
         return arrayOf(
-            ExportWithTestsAction(),
-            ExportWithImplementationsAction(),
-            ExportCurrentPackageAction()
+            exportWithTestsAction,
+            exportWithImplementationsAction,
+            exportCurrentPackageAction
         )
     }
     

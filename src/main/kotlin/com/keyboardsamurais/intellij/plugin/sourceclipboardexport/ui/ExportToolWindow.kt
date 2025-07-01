@@ -116,7 +116,10 @@ class ExportToolWindow(private val project: Project) : SimpleToolWindowPanel(fal
     }
 
     private fun setupFileTree() {
+        // --- FIX: Use a single renderer component ---
         fileTree.cellRenderer = object : DefaultTreeCellRenderer() {
+            private val checkbox = JCheckBox()
+
             override fun getTreeCellRendererComponent(
                 tree: JTree?,
                 value: Any?,
@@ -126,16 +129,18 @@ class ExportToolWindow(private val project: Project) : SimpleToolWindowPanel(fal
                 row: Int,
                 hasFocus: Boolean
             ): Component {
-                val component = super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, hasFocus)
-                if (value is DefaultMutableTreeNode) {
-                    val userObject = value.userObject
-                    if (userObject is FileNode) {
-                        val checkbox = JCheckBox(userObject.file.name, userObject.selected)
-                        checkbox.isOpaque = false
-                        return checkbox
-                    }
+                val userObject = (value as? DefaultMutableTreeNode)?.userObject
+                if (userObject is FileNode) {
+                    checkbox.text = userObject.file.name
+                    checkbox.isSelected = userObject.selected
+                    checkbox.isOpaque = false
+                    // Match background/foreground for proper theme support
+                    checkbox.background = UIManager.getColor("Tree.background")
+                    checkbox.foreground = UIManager.getColor("Tree.foreground")
+                    return checkbox
                 }
-                return component
+                // Fallback to default renderer for non-FileNode objects
+                return super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, hasFocus)
             }
         }
         
@@ -148,15 +153,20 @@ class ExportToolWindow(private val project: Project) : SimpleToolWindowPanel(fal
                 val node = path.lastPathComponent as? DefaultMutableTreeNode ?: return
                 val fileNode = node.userObject as? FileNode ?: return
                 
-                fileNode.selected = !fileNode.selected
-                if (fileNode.selected) {
-                    selectedFiles.add(fileNode.file)
-                } else {
-                    selectedFiles.remove(fileNode.file)
+                // --- FIX: Only toggle if the click is on the checkbox itself ---
+                val pathBounds = fileTree.getPathBounds(path)
+                if (pathBounds != null && e.x < pathBounds.x + 20) { // Assuming checkbox is about 20px wide
+                    fileNode.selected = !fileNode.selected
+                    if (fileNode.selected) {
+                        selectedFiles.add(fileNode.file)
+                    } else {
+                        selectedFiles.remove(fileNode.file)
+                    }
+                    
+                    // Repaint the node to show the change
+                    (fileTree.model as DefaultTreeModel).nodeChanged(node)
+                    updatePreview()
                 }
-                
-                fileTreeModel.nodeChanged(node)
-                updatePreview()
             }
         })
     }

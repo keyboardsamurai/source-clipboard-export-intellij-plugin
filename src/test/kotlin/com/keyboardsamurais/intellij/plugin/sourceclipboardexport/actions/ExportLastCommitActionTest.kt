@@ -10,21 +10,20 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
+import git4idea.repo.GitRepository
+import git4idea.repo.GitRepositoryManager
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
-import io.mockk.mockkConstructor
 import io.mockk.mockkObject
 import io.mockk.mockkStatic
 import io.mockk.runs
 import io.mockk.unmockkAll
-import io.mockk.unmockkConstructor
 import io.mockk.verify
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import java.io.File
 
 class ExportLastCommitActionTest {
 
@@ -88,9 +87,11 @@ class ExportLastCommitActionTest {
         // Arrange
         every { mockProject.basePath } returns "/tmp/test-project"
         
-        // Mock File to simulate no .git directory
-        mockkConstructor(File::class)
-        every { anyConstructed<File>().exists() } returns false
+        // Mock GitRepositoryManager with no repositories
+        val mockRepositoryManager = mockk<GitRepositoryManager>()
+        mockkStatic(GitRepositoryManager::class)
+        every { GitRepositoryManager.getInstance(mockProject) } returns mockRepositoryManager
+        every { mockRepositoryManager.repositories } returns emptyList()
 
         // Act
         action.actionPerformed(mockEvent)
@@ -106,7 +107,7 @@ class ExportLastCommitActionTest {
         }
         verify(exactly = 0) { SmartExportUtils.exportFiles(any(), any()) }
 
-        unmockkConstructor(File::class)
+        unmockkAll()
     }
 
     @Test
@@ -114,10 +115,12 @@ class ExportLastCommitActionTest {
         // Arrange
         every { mockProject.basePath } returns "/tmp/test-project"
         
-        // Mock File to simulate .git directory exists
-        mockkConstructor(File::class)
-        every { anyConstructed<File>().exists() } returns true
-        every { anyConstructed<File>().isDirectory } returns true
+        // Mock GitRepositoryManager
+        val mockRepositoryManager = mockk<GitRepositoryManager>()
+        val mockRepository = mockk<GitRepository>()
+        mockkStatic(GitRepositoryManager::class)
+        every { GitRepositoryManager.getInstance(mockProject) } returns mockRepositoryManager
+        every { mockRepositoryManager.repositories } returns listOf(mockRepository)
 
         // Act
         action.update(mockEvent)
@@ -129,7 +132,7 @@ class ExportLastCommitActionTest {
             mockEvent.presentation.description = "Export files changed in the most recent commit"
         }
 
-        unmockkConstructor(File::class)
+        unmockkAll()
     }
 
     @Test
@@ -137,9 +140,11 @@ class ExportLastCommitActionTest {
         // Arrange
         every { mockProject.basePath } returns "/tmp/test-project"
         
-        // Mock File to simulate no .git directory
-        mockkConstructor(File::class)
-        every { anyConstructed<File>().exists() } returns false
+        // Mock GitRepositoryManager with no repositories
+        val mockRepositoryManager = mockk<GitRepositoryManager>()
+        mockkStatic(GitRepositoryManager::class)
+        every { GitRepositoryManager.getInstance(mockProject) } returns mockRepositoryManager
+        every { mockRepositoryManager.repositories } returns emptyList()
 
         // Act
         action.update(mockEvent)
@@ -147,7 +152,7 @@ class ExportLastCommitActionTest {
         // Assert
         verify { mockEvent.presentation.isEnabledAndVisible = false }
 
-        unmockkConstructor(File::class)
+        unmockkAll()
     }
 
     @Test
@@ -165,13 +170,16 @@ class ExportLastCommitActionTest {
     @Test
     fun `update handles exception when checking for git`() {
         // Arrange
-        every { mockProject.basePath } throws RuntimeException("Error accessing project path")
+        mockkStatic(GitRepositoryManager::class)
+        every { GitRepositoryManager.getInstance(mockProject) } throws RuntimeException("Error accessing repository manager")
 
         // Act
         action.update(mockEvent)
 
         // Assert
         verify { mockEvent.presentation.isEnabledAndVisible = false }
+        
+        unmockkAll()
     }
 
     @Test

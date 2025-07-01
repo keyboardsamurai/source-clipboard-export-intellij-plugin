@@ -27,8 +27,8 @@ class ExportWithTransitiveImportsActionTest {
     
     @Test
     fun `test action presentation text and description`() {
-        assert(action.templatePresentation.text == "Include All Dependencies")
-        assert(action.templatePresentation.description == "Export selected files with all dependencies")
+        assert(action.templatePresentation.text == "Include Transitive Dependencies")
+        assert(action.templatePresentation.description == "Export selected files + complete dependency tree")
     }
     
     @Test

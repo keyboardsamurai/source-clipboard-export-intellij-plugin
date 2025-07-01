@@ -162,6 +162,8 @@
     <depends>com.intellij.modules.platform</depends>
     <!-- depends>com.intellij.modules.execution</depends -->
     <depends>com.intellij.java</depends>
+    <depends>com.intellij.modules.vcs</depends>
+    <depends>Git4Idea</depends>
     <!-- Extension points defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
@@ -228,6 +230,49 @@
                 description="Folds external library frames in the selected stack trace and copies a compact version to clipboard.">
             <add-to-group group-id="ConsoleEditorPopupMenu" anchor="last"/>
         </action>
+
+        <!-- All Smart Export Actions - registered but not added to groups directly -->
+        <!-- Dependency Actions -->
+        <action id="SourceClipboardExport.ExportWithDirectImports"
+                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportWithDirectImportsAction"/>
+        <action id="SourceClipboardExport.ExportWithTransitiveImports"
+                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportWithTransitiveImportsAction"/>
+        <action id="SourceClipboardExport.ExportDependents"
+                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportDependentsAction"/>
+        <action id="SourceClipboardExport.ExportBidirectionalDependencies"
+                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportBidirectionalDependenciesAction"/>
+        
+        <!-- Code Structure Actions -->
+        <action id="SourceClipboardExport.ExportWithTests"
+                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportWithTestsAction"/>
+        <action id="SourceClipboardExport.ExportWithImplementations"
+                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportWithImplementationsAction"/>
+        <action id="SourceClipboardExport.ExportCurrentPackage"
+                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportCurrentPackageAction"/>
+        
+        <!-- Related Resources Actions -->
+        <action id="SourceClipboardExport.ExportWithConfigs"
+                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportWithConfigsAction"/>
+        <action id="SourceClipboardExport.ExportWithResources"
+                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportWithResourcesAction"/>
+        <action id="SourceClipboardExport.ExportAllTests"
+                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportAllTestsAction"/>
+        
+        <!-- Version History Actions -->
+        <action id="SourceClipboardExport.ExportRecentChanges"
+                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportRecentChangesAction"/>
+        <action id="SourceClipboardExport.ExportLastCommit"
+                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportLastCommitAction"/>
+
+        <!-- Group Definitions -->
+        <group id="SourceClipboardExport.DependencyExportGroup"
+               class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.groups.DependencyExportGroup"/>
+        <group id="SourceClipboardExport.CodeStructureExportGroup"
+               class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.groups.CodeStructureExportGroup"/>
+        <group id="SourceClipboardExport.RelatedResourcesExportGroup"
+               class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.groups.RelatedResourcesExportGroup"/>
+        <group id="SourceClipboardExport.VersionHistoryExportGroup"
+               class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.groups.VersionHistoryExportGroup"/>
 
     </actions>
 

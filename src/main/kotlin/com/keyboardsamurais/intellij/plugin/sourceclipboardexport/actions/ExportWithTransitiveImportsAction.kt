@@ -8,7 +8,13 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.vfs.VirtualFile
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.RelatedFileFinder
 
-class ExportWithTransitiveImportsAction : AnAction("Include All Dependencies", "Export selected files with all dependencies", null) {
+class ExportWithTransitiveImportsAction : AnAction() {
+    
+    init {
+        templatePresentation.text = "Include Transitive Dependencies"
+        templatePresentation.description = "Export selected files + complete dependency tree"
+        templatePresentation.icon = com.keyboardsamurais.intellij.plugin.sourceclipboardexport.icons.DependencyIcons.TRANSITIVE_IMPORTS
+    }
     
     private val logger = Logger.getInstance(ExportWithTransitiveImportsAction::class.java)
     
