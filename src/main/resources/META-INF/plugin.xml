@@ -13,141 +13,74 @@
     <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
          Simple HTML elements (text formatting, paragraphs, and lists) can be added inside of <![CDATA[ ]]> tag.
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-description -->
-    <description><![CDATA[<description>
-    This plugin automates the inclusion of source code and its file path into your clipboard, streamlining the process
-    for analysis and sharing, especially with Large Language Models (LLMs).
+    <description><![CDATA[
+    Supercharge your AI-driven development! This plugin automates packaging source code and its full context into your clipboard, streamlining the process of building high-quality prompts for Large Language Models (LLMs).
 
-    Including the file path with the source code often gives immediate context to the recipient or the processing tool.
-    This is particularly useful when sharing code snippets with team members or integrating with AI and LLMs,
-    as it clarifies where the code comes from within a project's directory structure.
-    It helps in understanding the purpose and scope of the code, especially in large projects with complex directory
-    hierarchies and results in better LLM response accuracy and performance.
+    Including file paths, dependencies, and related files gives immediate context to the AI, dramatically improving the accuracy and relevance of its responses. This is essential for complex analysis, refactoring, and code generation tasks.
 
-<ul>
-    <li><b>🚀 AI-Optimized Sharing:</b> Effortlessly prepare detailed, context-rich code snippets for immediate AI analysis.</li>
-    <li><b>🤝 Enhanced Collaboration:</b> Instantly share complete and accurate code context with team members and AI assistants.</li>
-    <li><b>📋 Automated Efficiency:</b> Automatically attach file paths to clipboard content, eliminating manual errors and speeding up workflow.</li>
-    <li><b>📂 Intelligent Directory Handling:</b> Quickly export entire directories into an AI-friendly format while smartly skipping irrelevant files like binaries and large files, optimizing your workflow.</li>
-    <li><b>🔢 Optimized Performance:</b> Efficiently manage large data exports with built-in file limit controls, maintaining optimal plugin performance.</li>
-</ul>
+    <ul>
+        <li><b>🚀 Get Superior AI Results:</b> Effortlessly prepare detailed, context-rich code snippets for immediate AI analysis.</li>
+        <li><b>🧠 Build Complete Context:</b> Instantly provide AI assistants with rich, accurate code context, including dependencies, tests, and more.</li>
+        <li><b>📋 Automated Efficiency:</b> Automatically attach file paths to clipboard content, eliminating manual errors and speeding up your workflow.</li>
+        <li><b>📂 Intelligent Directory Handling:</b> Quickly export entire directories into an AI-friendly format while smartly skipping irrelevant files.</li>
+        <li><b>🤖 Full Token Control:</b> Fine-tune every export to stay within LLM token limits, optimizing for cost and performance.</li>
+    </ul>
 
-    Export Source to Clipboard is designed for developers and teams looking to leverage AI in their coding process,
-    offering a convenient bridge between your code and the latest AI technologies for analysis and improvement.
-    It's an essential tool for anyone aiming to enhance productivity and focus on innovation in the software
-    development lifecycle.
-</description>
-]]></description>
+    Export Source to Clipboard is an essential tool for developers looking to leverage AI in their coding process, offering a powerful bridge between your IDE and the latest generative AI technologies.
+    ]]></description>
 
     <change-notes><![CDATA[
-        <h3>Version 2.0 – Smart Export Actions & Enhanced Menu Structure 🎯</h3>
+        <h3>Version 2.0 – The Context-Aware Update for AI Workflows 🎯</h3>
+        <p>A complete redesign focused on providing deep, contextual code exports with ease. Build better AI prompts, faster.</p>
+
+        <h4>🚀 Major New Features & Enhancements</h4>
         <ul>
-            <li><b>🎯 Smart Export Actions:</b> New context-aware export options organized in logical groups:
+            <li><b>🎯 Smart Export Actions:</b> A powerful new menu to export code with its full context. Right-click and choose "Export with Context" to access:
                 <ul>
-                    <li><b>Dependencies:</b> Export Direct Imports, Transitive Imports, or find Dependents (reverse dependencies)</li>
-                    <li><b>Code Structure:</b> Export Tests, Implementations/Subclasses, or Current Package</li>
-                    <li><b>Related Resources:</b> Export Configuration Files, Templates & Styles, or All Related Tests</li>
-                    <li><b>Version History:</b> Export Recent Changes or Last Commit Files</li>
+                    <li><b>Dependencies:</b> Export with Direct Imports, Transitive Imports, or find Dependents (for impact analysis).</li>
+                    <li><b>Code Structure:</b> Export with related Tests, Implementations/Subclasses, or all files in the current Package.</li>
+                    <li><b>Related Resources:</b> Export with Configuration Files, Templates & Styles, or All Related Tests and resources.</li>
+                    <li><b>Version History:</b> Export files from Recent Changes or the Last Git Commit.</li>
                 </ul>
             </li>
-            <li><b>🌍 Enhanced Multi-Language Support:</b> Full TypeScript, JavaScript, React, and Next.js support across all smart export actions with comprehensive test pattern detection and modern framework awareness</li>
-            <li><b>🔄 Export Dependents:</b> Revolutionary reverse dependency finder - discover what files depend on your selection:
-                <ul>
-                    <li>Perfect for impact analysis before refactoring</li>
-                    <li>Supports Java, Kotlin, JavaScript, TypeScript, and Python</li>
-                    <li>Uses IntelliJ's powerful reference search capabilities</li>
-                </ul>
-            </li>
-            <li><b>🏗️ Export Implementations:</b> Find all implementations of interfaces and subclasses:
-                <ul>
-                    <li>Ideal for understanding polymorphic behavior</li>
-                    <li>Includes anonymous inner classes</li>
-                    <li>Provides helpful statistics about found implementations</li>
-                </ul>
-            </li>
-            <li><b>🎨 Export Templates & Styles:</b> Framework-aware resource detection:
-                <ul>
-                    <li>Automatic detection for Spring MVC, React, Vue, and Angular</li>
-                    <li>Finds related HTML, CSS, and resource files</li>
-                    <li>Pattern matching and string literal analysis</li>
-                </ul>
-            </li>
-            <li><b>🧪 Export All Tests:</b> Comprehensive test discovery:
-                <ul>
-                    <li>Finds unit, integration, E2E, and performance tests</li>
-                    <li>Includes test resources and fixtures</li>
-                    <li>Discovers test utilities and helpers</li>
-                    <li>Categorizes tests for clear reporting</li>
-                </ul>
-            </li>
-            <li><b>📋 Organized Menu Structure:</b> Intuitive hierarchical menu organization with logical grouping and visual separators for better discoverability</li>
-            <li><b>⌨️ Keyboard Shortcuts:</b> Added convenient keyboard shortcuts for quick access:
-                <ul>
-                    <li><code>Ctrl+Shift+C</code> (Windows/Linux) or <code>Cmd+Shift+C</code> (Mac) - Export Files/Folders to Clipboard</li>
-                    <li><code>Ctrl+Shift+Alt+C</code> (Windows/Linux) or <code>Cmd+Shift+Alt+C</code> (Mac) - Toggle Filters</li>
-                </ul>
-            </li>
-            <li><b>🎯 Smarter Defaults:</b> Improved out-of-box experience with better default settings:
-                <ul>
-                    <li>Increased default file count limit from 50 to 200 files</li>
-                    <li>Increased default file size limit from 100KB to 500KB</li>
-                    <li>Line numbers now enabled by default for better AI/LLM context</li>
-                    <li>Filters automatically disabled when filter list is empty</li>
-                </ul>
-            </li>
-            <li><b>🧠 Smart Export Actions:</b> Context-aware export options for streamlined workflows:
-                <ul>
-                    <li><b>Export with Tests:</b> Automatically includes related test files for your selection</li>
-                    <li><b>Export with Configs:</b> Includes relevant configuration files (pom.xml, package.json, etc.)</li>
-                    <li><b>Export Recent Changes:</b> Exports files modified in the last 24 hours</li>
-                    <li><b>Export Last Commit Files:</b> Exports all files changed in the most recent Git commit</li>
-                    <li><b>Export with Direct Imports:</b> Includes all directly imported files from the same project</li>
-                    <li><b>Export with Transitive Imports:</b> Includes all direct and transitive dependencies</li>
-                    <li>All accessible via right-click context menu under "Export with Context"</li>
-                </ul>
-            </li>
-            <li><b>📝 Export History:</b> Track and revisit your export workflow:
-                <ul>
-                    <li>Automatically maintains history of your last 10 exports</li>
-                    <li>Stores timestamp, file count, size, token estimates, and file paths</li>
-                    <li>Persistent across IDE sessions for workflow continuity</li>
-                </ul>
-            </li>
-            <li><b>🔍 Export Diff View:</b> Compare and understand changes between exports:
-                <ul>
-                    <li>Visual diff showing added/removed files compared to last export</li>
-                    <li>Statistics comparison (file count, size, tokens) between exports</li>
-                    <li>"Copy Diff" button for easy sharing of change summaries</li>
-                    <li>"Export Changes Only" option to export just the newly added files</li>
-                </ul>
-            </li>
-            <li><b>📊 Enhanced Notifications:</b> Copy notifications now show comprehensive information: file count, total size (KB/MB), and estimated token count</li>
-            <li><b>👁️ Preview Export:</b> New "Preview Export" button in settings shows exactly what your export will look like with current settings</li>
-            <li><b>⚡ Performance Improvements:</b> Now uses system CPU count for parallel processing instead of fixed thread count</li>
-            <li><b>⚠️ Large Operation Warning:</b> Shows confirmation dialog when exporting more than 100 files to prevent accidental large exports</li>
-            <li><b>💬 Clearer Messages:</b> Improved error messages with specific guidance and actionable "Open Settings" buttons when limits are reached</li>
-            <li><b>🏷️ UI Enhancements:</b> Added tooltips to output format dropdown explaining each format, clearer action names, and dynamic filter state display</li>
+            <li><b>🌍 Enhanced Multi-Language Support:</b> Full support for TypeScript, JavaScript, React, and Next.js across all smart actions, with modern framework awareness.</li>
+            <li><b>🧪 Comprehensive Test Discovery:</b> The "All Tests" action now finds unit, integration, E2E, and performance tests, plus related fixtures and helper utilities.</li>
+            <li><b>🎨 Framework-Aware Resource Finding:</b> Intelligently detects and includes related templates and styles for frameworks like Spring, React, Vue, and Angular.</li>
         </ul>
+
+        <h4>✨ UI & Workflow Improvements</h4>
+        <ul>
+            <li><b>📋 Organized Menu Structure:</b> An intuitive, hierarchical menu with logical grouping and visual separators for better discoverability.</li>
+            <li><b>📝 Export History & Diff View:</b> A new "Compare with Last Export" action lets you see what's changed. The history tracks your last 10 exports, and the diff view shows added/removed files and updated stats.</li>
+            <li><b>⌨️ New Keyboard Shortcuts:</b> Added `Ctrl+Shift+C` for standard export and `Ctrl+Shift+Alt+C` to toggle filters.</li>
+            <li><b>🎯 Smarter Defaults:</b> Increased file count/size limits (200 files, 500KB) and enabled line numbers by default for better AI context.</li>
+            <li><b>👁️ Preview Export Button:</b> A new button in Settings shows you exactly what an export will look like with your current configuration.</li>
+            <li><b>📊 Enhanced Notifications:</b> Copy notifications now show file count, total size (KB/MB), and estimated token count.</li>
+        </ul>
+
+        <h4>⚙️ Under the Hood</h4>
+        <ul>
+             <li><b>⚡ Performance Improvements:</b> Exporting now uses parallel processing based on your system's CPU count for faster results on large selections.</li>
+             <li><b>⚠️ Large Operation Warning:</b> A confirmation dialog now appears when exporting over 100 files to prevent accidental large operations.</li>
+        </ul>
+
+        <hr>
 
         <h3>Version 1.7 – Enhanced Stack Traces & Gitignore Magic ✨</h3>
         <ul>
-            <li><b>📌 Stack Trace Folding:</b> Introduced intelligent stack trace folding in console views. Library frames are neatly collapsed, highlighting your project code clearly:
-                <ul>
-                    <li>Special handling ensures critical contexts like Spring test frames remain fully visible.</li>
-                    <li>Improved readability with consistent indentation for folded frames.</li>
-                    <li>Quickly copy neatly folded stack traces directly from the IntelliJ console.</li>
-                </ul>
-            </li>
-            <li><b>🧙 Gitignore Mastery:</b> Significantly upgraded gitignore parsing with hierarchical rule handling, caching optimizations, and precise pattern matching. Enjoy accurate, git-consistent exclusions with enhanced logging for effortless debugging.</li>
-            <li><b>🚀 Accuracy Boosts:</b> Optimized token counting for GPT-4 accuracy using the powerful <a href="https://github.com/knuddelsgmbh/jtokkit">Jtokkit library</a>, significantly enhancing export speed and responsiveness.</li>
+            <li><b>📌 Stack Trace Folding:</b> Introduced intelligent stack trace folding in console views. Library frames are neatly collapsed, highlighting your project code clearly.</li>
+            <li><b>🧙 Gitignore Mastery:</b> Significantly upgraded gitignore parsing with hierarchical rule handling and caching for accurate, git-consistent exclusions.</li>
+            <li><b>🚀 Accuracy Boosts:</b> Optimized token counting for GPT-4 accuracy using the Jtokkit library, enhancing export speed and responsiveness.</li>
         </ul>
 
         <h3>Version 1.6 – Powerful New Improvements</h3>
         <ul>
-            <li><b>📜 Gitignore Integration:</b> Automatically respects your <code>.gitignore</code> settings, providing clean and relevant exports.</li>
-            <li><b>🧮 Token Count Insights:</b> Know exactly how much code you're exporting, helping you avoid LLM context overflow.</li>
-            <li><b>💻 Enhanced Settings Interface:</b> Now easier than ever to customize export limits and exclusions, with intuitive validation and user-friendly feedback.</li>
+            <li><b>📜 Gitignore Integration:</b> Automatically respects your <code>.gitignore</code> settings.</li>
+            <li><b>🧮 Token Count Insights:</b> Added token count estimation to help avoid LLM context overflow.</li>
+            <li><b>💻 Enhanced Settings Interface:</b> Now easier than ever to customize export limits and exclusions.</li>
         </ul>
     ]]></change-notes>
+
 
     <!-- Product and plugin compatibility requirements.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
