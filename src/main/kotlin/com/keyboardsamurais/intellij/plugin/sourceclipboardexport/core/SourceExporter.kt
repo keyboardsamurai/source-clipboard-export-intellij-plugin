@@ -49,6 +49,9 @@ class SourceExporter(
     // Store the hierarchical gitignore parser instance
     private val hierarchicalGitignoreParser = HierarchicalGitignoreParser(project)
 
+    // Track explicitly selected top-level files to allow .gitignore override for those files only
+    private var explicitTopLevelFiles: Set<VirtualFile> = emptySet()
+
     data class ExportResult(
         val content: String,
         val processedFileCount: Int,
@@ -97,6 +100,9 @@ class SourceExporter(
 
         indicator.isIndeterminate = false
         indicator.text = "Scanning files..."
+
+        // Store explicit selection for .gitignore override on files
+        explicitTopLevelFiles = selectedFiles.toSet()
 
         // Use a map to store local buffers for each coroutine
         val localBuffers = ConcurrentHashMap<Long, MutableList<String>>()
@@ -395,20 +401,24 @@ class SourceExporter(
             return
         }
         
-        // Gitignore Check
-        try {
-            val isIgnoredByGit = ReadAction.compute<Boolean, Exception> {
-                hierarchicalGitignoreParser.isIgnored(file)
+        // Gitignore Check (override for explicitly selected files only)
+        if (file !in explicitTopLevelFiles) {
+            try {
+                val isIgnoredByGit = ReadAction.compute<Boolean, Exception> {
+                    hierarchicalGitignoreParser.isIgnored(file)
+                }
+                if (isIgnoredByGit) {
+                    logger.info(">>> Gitignore Match: YES. Skipping '${fileProps.path}' based on hierarchical .gitignore rules.")
+                    excludedByGitignoreCount.incrementAndGet()
+                    return
+                } else {
+                    logger.info(">>> Gitignore Match: NO. Proceeding with '${fileProps.path}'.")
+                }
+            } catch (e: Exception) {
+                logger.warn(">>> Gitignore Check: ERROR checking status for '${fileProps.path}'. File will be processed.", e)
             }
-            if (isIgnoredByGit) {
-                logger.info(">>> Gitignore Match: YES. Skipping '${fileProps.path}' based on hierarchical .gitignore rules.")
-                excludedByGitignoreCount.incrementAndGet()
-                return
-            } else {
-                logger.info(">>> Gitignore Match: NO. Proceeding with '${fileProps.path}'.")
-            }
-        } catch (e: Exception) {
-            logger.warn(">>> Gitignore Check: ERROR checking status for '${fileProps.path}'. File will be processed.", e)
+        } else {
+            logger.info(">>> Gitignore Override: File was explicitly selected. Including '${fileProps.path}' despite .gitignore matches.")
         }
 
         // Check cancellation again after gitignore check
