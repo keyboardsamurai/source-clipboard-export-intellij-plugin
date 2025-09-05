@@ -7,8 +7,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.progress.ProgressManager
-import com.intellij.openapi.progress.Task
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.ActionRunners
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.DependencyFinder
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
 import kotlinx.coroutines.runBlocking
@@ -56,51 +55,52 @@ class ExportDependentsAction : AnAction() {
         // Log the operation
         logger.info("Starting dependent file search for ${sourceFiles.size} files")
 
-        // Show progress dialog
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "Finding dependent files...", true) {
-            override fun run(indicator: ProgressIndicator) {
-                try {
-                    indicator.text = "Searching for dependent files..."
-                    indicator.isIndeterminate = true
-                    
-                    // Simple performance configuration based on file count
-                    if (sourceFiles.size <= 2) {
-                        // Small operation - no special configuration needed
-                        logger.info("Small operation: analyzing ${sourceFiles.size} files")
-                    } else if (sourceFiles.size <= 10) {
-                        // Medium operation - log a warning
-                        logger.warn("Medium operation: analyzing ${sourceFiles.size} files")
-                    } else {
-                        // Large operation - warn user about potential performance impact
-                        logger.warn("Large operation: analyzing ${sourceFiles.size} files - this may take a while")
-                    }
+        // Show progress dialog (wait for smart mode)
+        ActionRunners.runSmartBackground(project, "Finding dependent files...") { indicator: ProgressIndicator ->
+            try {
+                indicator.text = "Searching for dependent files..."
+                indicator.isIndeterminate = true
 
-                    val dependentFiles = runBlocking {
-                        DependencyFinder.findDependents(sourceFiles, project)
-                    }
-
-                    // Include original files plus their dependents
-                    val allFilesToExport = sourceFiles.toSet() + dependentFiles
-
-                    if (dependentFiles.isEmpty()) {
-                        NotificationUtils.showNotification(
-                            project,
-                            "Export Info",
-                            "No dependent files found. Exporting only the selected files.",
-                            NotificationType.INFORMATION
-                        )
-                    }
-
-                    indicator.text = "Exporting ${allFilesToExport.size} files..."
-
-                    // Use the centralized export utility for consistent behavior
-                    SmartExportUtils.exportFiles(project, allFilesToExport.toTypedArray())
-                    
-                } catch (e: Exception) {
-                    logger.error("Failed to find dependent files", e)
-                    NotificationUtils.showNotification(project, "Export Error", "Failed to find dependent files: ${e.message}", NotificationType.ERROR)
+                // Simple performance configuration based on file count
+                if (sourceFiles.size <= 2) {
+                    logger.info("Small operation: analyzing ${sourceFiles.size} files")
+                } else if (sourceFiles.size <= 10) {
+                    logger.warn("Medium operation: analyzing ${sourceFiles.size} files")
+                } else {
+                    logger.warn("Large operation: analyzing ${sourceFiles.size} files - this may take a while")
                 }
+
+                val dependentFiles = runBlocking {
+                    DependencyFinder.findDependents(sourceFiles, project)
+                }
+
+                // Include original files plus their dependents
+                val allFilesToExport = (sourceFiles.toSet() + dependentFiles)
+
+                if (dependentFiles.isEmpty()) {
+                    NotificationUtils.showNotification(
+                        project,
+                        "Export Info",
+                        "No dependent files found. Exporting only the selected files.",
+                        NotificationType.INFORMATION
+                    )
+                } else if (dependentFiles.size >= DependencyFinder.Config.maxResultsPerSearch) {
+                    NotificationUtils.showNotification(
+                        project,
+                        "Export Info",
+                        "Dependent search reached configured limit (${DependencyFinder.Config.maxResultsPerSearch})",
+                        NotificationType.INFORMATION
+                    )
+                }
+
+                indicator.text = "Exporting ${allFilesToExport.size} files..."
+
+                // Use the centralized export utility for consistent behavior
+                SmartExportUtils.exportFiles(project, allFilesToExport.toTypedArray())
+            } catch (e: Exception) {
+                logger.error("Failed to find dependent files", e)
+                NotificationUtils.showNotification(project, "Export Error", "Failed to find dependent files: ${e.message}", NotificationType.ERROR)
             }
-        })
+        }
     }
 }

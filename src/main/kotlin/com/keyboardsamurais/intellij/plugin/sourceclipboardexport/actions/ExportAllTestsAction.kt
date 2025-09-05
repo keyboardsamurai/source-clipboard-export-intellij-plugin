@@ -4,9 +4,8 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.progress.ProgressManager
-import com.intellij.openapi.progress.Task
 import com.intellij.openapi.vfs.VirtualFile
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.ActionRunners
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.ExtendedTestFinder
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
 
@@ -29,12 +28,7 @@ class ExportAllTestsAction : AnAction() {
             return
         }
         
-        ProgressManager.getInstance().run(object : Task.Backgroundable(
-            project, 
-            "Finding All Related Tests...", 
-            true
-        ) {
-            override fun run(indicator: ProgressIndicator) {
+        ActionRunners.runSmartBackground(project, "Finding All Related Tests...") { indicator: ProgressIndicator ->
                 try {
                     indicator.isIndeterminate = false
                     indicator.text = "Searching for all test types..."
@@ -49,15 +43,27 @@ class ExportAllTestsAction : AnAction() {
                             "No tests found for the selected files",
                             com.intellij.notification.NotificationType.INFORMATION
                         )
-                        return
+                        return@runSmartBackground
                     }
                     
+                    // Optional cap via system property
+                    val maxTests = System.getProperty("sce.tests.max")?.toIntOrNull() ?: Int.MAX_VALUE
+                    val limitedTests = if (testFiles.size > maxTests) testFiles.toList().sortedBy { it.path }.take(maxTests).toSet() else testFiles
+                    if (testFiles.size > maxTests) {
+                        NotificationUtils.showNotification(
+                            project,
+                            "Export Info",
+                            "Processing first $maxTests of ${testFiles.size} tests",
+                            com.intellij.notification.NotificationType.INFORMATION
+                        )
+                    }
+
                     // Categorize tests for better notification
-                    val categorizedTests = categorizeTests(testFiles)
+                    val categorizedTests = categorizeTests(limitedTests)
                     
                     // Combine selected files with their tests
                     val allFiles = selectedFiles.toMutableSet()
-                    allFiles.addAll(testFiles)
+                    allFiles.addAll(limitedTests)
                     
                     val description = buildTestDescription(categorizedTests)
                     
@@ -68,7 +74,6 @@ class ExportAllTestsAction : AnAction() {
                         project,
                         allFiles.toTypedArray()
                     )
-                    
                 } catch (e: Exception) {
                     NotificationUtils.showNotification(
                         project, 
@@ -77,8 +82,7 @@ class ExportAllTestsAction : AnAction() {
                         com.intellij.notification.NotificationType.ERROR
                     )
                 }
-            }
-        })
+        }
     }
     
     override fun update(e: AnActionEvent) {

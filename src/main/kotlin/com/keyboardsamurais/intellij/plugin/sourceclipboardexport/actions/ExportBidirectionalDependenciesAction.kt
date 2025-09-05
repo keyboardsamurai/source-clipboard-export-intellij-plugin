@@ -6,9 +6,8 @@ import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.progress.ProgressManager
-import com.intellij.openapi.progress.Task
 import com.intellij.openapi.vfs.VirtualFile
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.ActionRunners
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.DependencyFinder
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.RelatedFileFinder
@@ -21,6 +20,13 @@ class ExportBidirectionalDependenciesAction : AnAction() {
 
     companion object {
         private val LOG = Logger.getInstance(ExportBidirectionalDependenciesAction::class.java)
+    }
+
+    object Config {
+        private fun boolProp(key: String, default: Boolean) = System.getProperty(key)?.toBooleanStrictOrNull() ?: default
+        private fun intProp(key: String, default: Int) = System.getProperty(key)?.toIntOrNull() ?: default
+        val includeTransitive: Boolean = boolProp("sce.includeTransitive", true)
+        val dependentsToProcessLimit: Int = intProp("sce.dependentsLimit", 50)
     }
 
     init {
@@ -43,15 +49,8 @@ class ExportBidirectionalDependenciesAction : AnAction() {
             return
         }
         
-        // Always include transitive dependencies now that it's fast
-        val includeTransitive = true
-        
-        ProgressManager.getInstance().run(object : Task.Backgroundable(
-            project,
-            "Finding bidirectional dependencies...",
-            true
-        ) {
-            override fun run(indicator: ProgressIndicator) {
+        // Defer heavy PSI work until indices are ready
+        ActionRunners.runSmartBackground(project, "Finding bidirectional dependencies...") { indicator: ProgressIndicator ->
                 try {
                     val allFiles = mutableSetOf<VirtualFile>()
                     allFiles.addAll(selectedFiles)
@@ -72,7 +71,7 @@ class ExportBidirectionalDependenciesAction : AnAction() {
                     allFiles.addAll(dependents)
                     
                     // Phase 2: Find dependencies (what these files use)
-                    indicator.text = if (includeTransitive) {
+                    indicator.text = if (Config.includeTransitive) {
                         "Finding all dependencies (transitive)..."
                     } else {
                         "Finding direct dependencies..."
@@ -85,27 +84,34 @@ class ExportBidirectionalDependenciesAction : AnAction() {
                         indicator.fraction = 0.4 + (0.3 * index / selectedFiles.size)
                         
                         val dependencies = ReadAction.compute<List<VirtualFile>, Exception> {
-                            if (includeTransitive) {
+                            if (Config.includeTransitive) {
                                 RelatedFileFinder.findTransitiveImports(project, file)
                             } else {
                                 RelatedFileFinder.findDirectImports(project, file)
                             }
                         }
-                        LOG.info("Found ${dependencies.size} ${if (includeTransitive) "transitive" else "direct"} dependencies for ${file.name}")
+                        LOG.info("Found ${dependencies.size} ${if (Config.includeTransitive) "transitive" else "direct"} dependencies for ${file.name}")
                         dependencies
                     }.flatten()
                     
                     allFiles.addAll(fileDependencies)
                     
                     // Phase 3: Optionally find dependencies of reverse dependencies
-                    if (includeTransitive && dependents.isNotEmpty()) {
+                    if (Config.includeTransitive && dependents.isNotEmpty()) {
                         indicator.text = "Finding dependencies of reverse dependencies..."
                         indicator.fraction = 0.7
                         
                         // Limit the number of dependents we process to avoid performance issues
-                        val dependentsToProcess = dependents.take(50)
-                        if (dependents.size > 50) {
-                            LOG.info("Processing first 50 of ${dependents.size} dependents for performance")
+                        val limit = Config.dependentsToProcessLimit
+                        val dependentsToProcess = dependents.take(limit)
+                        if (dependents.size > limit) {
+                            LOG.info("Processing first $limit of ${dependents.size} dependents for performance")
+                            NotificationUtils.showNotification(
+                                project,
+                                "Export Info",
+                                "Processed first $limit of ${dependents.size} dependents",
+                                com.intellij.notification.NotificationType.INFORMATION
+                            )
                         }
                         
                         val additionalDeps = dependentsToProcess.mapIndexed { index, dependent ->
@@ -137,16 +143,17 @@ class ExportBidirectionalDependenciesAction : AnAction() {
                             "No additional dependencies or reverse dependencies found",
                             com.intellij.notification.NotificationType.INFORMATION
                         )
-                        return
+                        return@runSmartBackground
                     }
                     
                     indicator.text = "Exporting ${allFiles.size} files..."
                     indicator.fraction = 0.9
                     
-                    // Export all files
+                    // Export all files (deterministic order)
+                    val ordered = allFiles.toList().sortedBy { it.path }
                     SmartExportUtils.exportFiles(
                         project,
-                        allFiles.toTypedArray()
+                        ordered.toTypedArray()
                     )
                     
                 } catch (pce: com.intellij.openapi.progress.ProcessCanceledException) {
@@ -169,8 +176,7 @@ class ExportBidirectionalDependenciesAction : AnAction() {
                         com.intellij.notification.NotificationType.ERROR
                     )
                 }
-            }
-        })
+        }
     }
 
     override fun update(e: AnActionEvent) {

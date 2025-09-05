@@ -336,7 +336,9 @@ class SourceExporter(
 
             logger.debug("Processing directory: ${fileProps.path}")
             val children = ReadAction.compute<Array<VirtualFile>?, Exception> { file.children }
-            children?.forEach { child ->
+            children
+                ?.sortedBy { it.path }
+                ?.forEach { child ->
                 scope.ensureActive()
                 // The recursive call will handle the visited check for each child
                 processEntry(child, scope, localBuffer, visitedFiles)

@@ -6,12 +6,29 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiFile
+import com.intellij.psi.PsiJavaFile
 import com.intellij.psi.PsiManager
 import com.intellij.psi.search.FilenameIndex
 import com.intellij.psi.search.GlobalSearchScope
+import org.jetbrains.kotlin.psi.KtFile
 
 object RelatedFileFinder {
+
+    object Config {
+        private fun listProp(key: String, default: List<String>) =
+            System.getProperty(key)?.split(',')
+                ?.map { it.trim() }
+                ?.filter { it.isNotEmpty() }
+                ?: default
+
+        val jsModuleRoots: List<String> = listProp("sce.jsRoots", listOf("src", "app", "pages", "components", "lib", "utils"))
+        val indexFileNames: List<String> = listProp("sce.indexFiles", listOf("index.js", "index.ts", "index.jsx", "index.tsx"))
+        fun intProp(key: String, default: Int) = System.getProperty(key)?.toIntOrNull() ?: default
+        val transitiveMaxDepth: Int = intProp("sce.transitiveDepth", Int.MAX_VALUE)
+        val importsMaxPerFile: Int = intProp("sce.imports.maxPerFile", Int.MAX_VALUE)
+    }
     
     fun findTestFiles(project: Project, sourceFile: VirtualFile): List<VirtualFile> {
         if (sourceFile.isDirectory) return emptyList()
@@ -258,23 +275,33 @@ object RelatedFileFinder {
     
     private fun findImportedFiles(project: Project, psiFile: PsiFile, transitive: Boolean): List<VirtualFile> {
         val allFoundFiles = mutableSetOf<VirtualFile>()
-        val queue = ArrayDeque<VirtualFile>()
+        data class Node(val file: VirtualFile, val depth: Int)
+        val queue = ArrayDeque<Node>()
         
         // Initial file
-        queue.add(psiFile.virtualFile)
+        queue.add(Node(psiFile.virtualFile, 0))
         // Use a single set to track visited files to prevent cycles and redundant processing
         val visited = mutableSetOf(psiFile.virtualFile)
 
         while (queue.isNotEmpty()) {
-            val currentFile = queue.removeFirst()
+            val (currentFile, currentDepth) = queue.removeFirst()
             
             // Don't add the initial file to the results, only its dependencies
             if (currentFile != psiFile.virtualFile) {
                 allFoundFiles.add(currentFile)
+                if (allFoundFiles.size >= Config.importsMaxPerFile) {
+                    // Cap reached for this file's import traversal
+                    break
+                }
             }
 
             // If not transitive, we only process the initial file
             if (!transitive && currentFile != psiFile.virtualFile) {
+                continue
+            }
+
+            // Respect transitive max depth (depth 0 is the starting file)
+            if (transitive && currentDepth >= Config.transitiveMaxDepth) {
                 continue
             }
 
@@ -287,7 +314,7 @@ object RelatedFileFinder {
             directImports.forEach { importedFile ->
                 // Add to queue only if it has never been visited before
                 if (visited.add(importedFile)) {
-                    queue.add(importedFile)
+                    queue.add(Node(importedFile, currentDepth + 1))
                 }
             }
         }
@@ -296,9 +323,16 @@ object RelatedFileFinder {
     }
     
     private fun extractImportsFromFile(project: Project, psiFile: PsiFile): List<VirtualFile> {
-        val imports = mutableListOf<VirtualFile>()
+        val imports = mutableSetOf<VirtualFile>()
         val fileText = psiFile.text
         val language = detectLanguage(psiFile.virtualFile)
+
+        // Prefer PSI-level import resolution for Java/Kotlin when possible
+        when (language) {
+            Language.JAVA -> imports.addAll(resolveJavaImportsPsi(project, psiFile))
+            Language.KOTLIN -> imports.addAll(resolveKotlinImportsPsi(project, psiFile))
+            else -> {}
+        }
         
         // Enhanced language-specific import patterns
         val importPatterns = when (language) {
@@ -350,8 +384,32 @@ object RelatedFileFinder {
                 }
             }
         }
-        
-        return imports
+
+        return imports.toList()
+    }
+
+    private fun resolveJavaImportsPsi(project: Project, psiFile: PsiFile): List<VirtualFile> {
+        val jf = psiFile as? PsiJavaFile ?: return emptyList()
+        return runReadAction {
+            jf.importList?.allImportStatements?.mapNotNull { stmt ->
+                stmt.importReference?.resolve()?.containingFile?.virtualFile
+            } ?: emptyList()
+        }
+    }
+
+    private fun resolveKotlinImportsPsi(project: Project, psiFile: PsiFile): List<VirtualFile> {
+        val kf = psiFile as? KtFile ?: return emptyList()
+        val fqns = runReadAction {
+            kf.importDirectives.mapNotNull { it.importPath?.fqName?.asString() }
+        }
+        val scope = GlobalSearchScope.allScope(project)
+        val facade = JavaPsiFacade.getInstance(project)
+        return fqns.mapNotNull { fqn ->
+            // Ignore star imports
+            if (fqn.endsWith(".*")) return@mapNotNull null
+            val psiClass = runReadAction { facade.findClass(fqn, scope) }
+            psiClass?.containingFile?.virtualFile
+        }
     }
     
     private fun resolveImportToFile(
@@ -360,22 +418,29 @@ object RelatedFileFinder {
         importPath: String,
         language: Language
     ): VirtualFile? {
-        val projectRoot = ReadAction.compute<VirtualFile?, Exception> {
-            ProjectRootManager.getInstance(project).contentRoots.firstOrNull()
-        } ?: return null
-        
-        // Language-specific resolution strategies
+        val projectRoots = ReadAction.compute<Array<VirtualFile>, Exception> {
+            ProjectRootManager.getInstance(project).contentRoots
+        }
+        if (projectRoots.isEmpty()) return null
+
         return when (language) {
-            Language.JAVASCRIPT, Language.TYPESCRIPT, Language.JSX, Language.TSX -> 
-                resolveJavaScriptImport(projectRoot, sourceFile, importPath)
-            Language.JAVA, Language.KOTLIN -> 
-                resolveJavaKotlinImport(projectRoot, importPath)
-            Language.PYTHON ->
-                resolvePythonImport(projectRoot, importPath)
-            Language.HTML ->
-                resolveHtmlReference(sourceFile, importPath)
-            Language.CSS ->
-                resolveCssImport(sourceFile, importPath)
+            Language.JAVASCRIPT, Language.TYPESCRIPT, Language.JSX, Language.TSX -> {
+                projectRoots.firstNotNullOfOrNull { root ->
+                    resolveJavaScriptImport(root, sourceFile, importPath)
+                }
+            }
+            Language.JAVA, Language.KOTLIN -> {
+                projectRoots.firstNotNullOfOrNull { root ->
+                    resolveJavaKotlinImport(root, importPath)
+                }
+            }
+            Language.PYTHON -> {
+                projectRoots.firstNotNullOfOrNull { root ->
+                    resolvePythonImport(root, importPath)
+                }
+            }
+            Language.HTML -> resolveHtmlReference(sourceFile, importPath)
+            Language.CSS -> resolveCssImport(sourceFile, importPath)
             else -> null
         }
     }
@@ -406,7 +471,7 @@ object RelatedFileFinder {
         
         // 2. Absolute imports from src
         return ReadAction.compute<VirtualFile?, Exception> {
-            val srcPaths = listOf("src", "app", "pages", "components", "lib", "utils")
+            val srcPaths = Config.jsModuleRoots
             srcPaths.forEach { srcDir ->
                 val srcRoot = projectRoot.findChild(srcDir)
                 if (srcRoot != null) {
@@ -417,7 +482,7 @@ object RelatedFileFinder {
                     }
                     
                     // Try index files
-                    val indexFiles = listOf("/index.js", "/index.ts", "/index.jsx", "/index.tsx")
+                    val indexFiles = Config.indexFileNames.map { "/$it" }
                     indexFiles.forEach { indexFile ->
                         val indexPath = srcRoot.findFileByRelativePath("$importPath$indexFile")
                         if (indexPath?.exists() == true) return@compute indexPath

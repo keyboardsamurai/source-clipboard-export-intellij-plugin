@@ -4,9 +4,8 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.progress.ProgressManager
-import com.intellij.openapi.progress.Task
 import com.intellij.openapi.vfs.VirtualFile
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.ActionRunners
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.InheritanceFinder
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
 import kotlinx.coroutines.runBlocking
@@ -30,12 +29,7 @@ class ExportWithImplementationsAction : AnAction() {
             return
         }
         
-        ProgressManager.getInstance().run(object : Task.Backgroundable(
-            project, 
-            "Finding Implementations...", 
-            true
-        ) {
-            override fun run(indicator: ProgressIndicator) {
+        ActionRunners.runSmartBackground(project, "Finding Implementations...") { indicator: ProgressIndicator ->
                 try {
                     indicator.isIndeterminate = false
                     indicator.text = "Analyzing class hierarchy..."
@@ -52,7 +46,7 @@ class ExportWithImplementationsAction : AnAction() {
                             "No interfaces or abstract classes found in the selected files",
                             com.intellij.notification.NotificationType.INFORMATION
                         )
-                        return
+                        return@runSmartBackground
                     }
                     
                     indicator.text = "Finding implementations..."
@@ -79,7 +73,7 @@ class ExportWithImplementationsAction : AnAction() {
                             }
                         }
                         NotificationUtils.showNotification(project, "Export Info", message, com.intellij.notification.NotificationType.INFORMATION)
-                        return
+                        return@runSmartBackground
                     }
                     
                     // Combine selected files with their implementations
@@ -93,7 +87,6 @@ class ExportWithImplementationsAction : AnAction() {
                         project,
                         allFiles.toTypedArray()
                     )
-                    
                 } catch (e: Exception) {
                     NotificationUtils.showNotification(
                         project, 
@@ -102,8 +95,7 @@ class ExportWithImplementationsAction : AnAction() {
                         com.intellij.notification.NotificationType.ERROR
                     )
                 }
-            }
-        })
+        }
     }
     
     override fun update(e: AnActionEvent) {

@@ -4,13 +4,16 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.testutils.ActionRunnersTestSetup
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.RelatedFileFinder
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
+import io.mockk.unmockkAll
 import io.mockk.unmockkObject
 import io.mockk.verify
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
@@ -28,6 +31,9 @@ class SmartExportActionsTest {
         file1 = mockk(relaxed = true)
         file2 = mockk(relaxed = true)
 
+        // Set up ActionRunners mocks
+        ActionRunnersTestSetup.setupMocks(project)
+
         every { event.project } returns project
         every { event.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) } returns arrayOf(file1)
         
@@ -38,6 +44,11 @@ class SmartExportActionsTest {
         every { file2.name } returns "ExampleTest.java"
         every { file2.path } returns "/project/test/ExampleTest.java"
         every { file2.isDirectory } returns false
+    }
+    
+    @AfterEach
+    fun tearDown() {
+        unmockkAll()
     }
 
     @Test

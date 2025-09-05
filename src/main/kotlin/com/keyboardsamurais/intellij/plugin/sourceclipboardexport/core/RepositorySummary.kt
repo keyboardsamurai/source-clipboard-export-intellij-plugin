@@ -4,9 +4,10 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.AppConstants
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.StringUtils
+import git4idea.repo.GitRepository
+import git4idea.repo.GitRepositoryManager
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import java.util.*
 
 /**
  * Class for generating repository summary information.
@@ -200,12 +201,51 @@ class RepositorySummary(
     }
 
     /**
-     * Gets the repository URL.
+     * Gets the repository URL from Git configuration.
      */
     private fun getRepositoryUrl(): String {
-        // In a real implementation, this would get the actual repository URL
-        // For now, we'll use a placeholder
-        return "https://github.com/keyboardsamurai/source-clipboard-export-intellij-plugin"
+        val repositoryManager = GitRepositoryManager.getInstance(project)
+        val repositories = repositoryManager.repositories
+        
+        if (repositories.isEmpty()) {
+            return "Not a Git repository"
+        }
+        
+        // Find the repository containing the most selected files
+        val repository = findBestRepository(repositories, selectedFiles) ?: repositories.first()
+        
+        // Try to find the origin remote first, otherwise use the first available remote
+        val originRemote = repository.remotes.find { it.name == "origin" }
+        val remote = originRemote ?: repository.remotes.firstOrNull()
+        
+        return remote?.firstUrl ?: "No remote configured"
+    }
+    
+    /**
+     * Finds the repository that contains the most selected files.
+     * This is useful for multi-repository projects.
+     */
+    private fun findBestRepository(repositories: List<GitRepository>, files: Array<VirtualFile>): GitRepository? {
+        if (repositories.size == 1) {
+            return repositories.first()
+        }
+        
+        // Count how many files belong to each repository
+        val fileCountByRepo = repositories.associateWith { repo ->
+            files.count { file ->
+                var parent: VirtualFile? = file
+                while (parent != null) {
+                    if (parent == repo.root) {
+                        return@count true
+                    }
+                    parent = parent.parent
+                }
+                false
+            }
+        }
+        
+        // Return the repository with the most files
+        return fileCountByRepo.maxByOrNull { it.value }?.key
     }
 
     /**

@@ -4,9 +4,8 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.progress.ProgressManager
-import com.intellij.openapi.progress.Task
 import com.intellij.openapi.vfs.VirtualFile
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.ActionRunners
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.ResourceFinder
 import kotlinx.coroutines.runBlocking
@@ -30,20 +29,13 @@ class ExportWithResourcesAction : AnAction() {
             return
         }
         
-        ProgressManager.getInstance().run(object : Task.Backgroundable(
-            project, 
-            "Finding Related Resources...", 
-            true
-        ) {
-            override fun run(indicator: ProgressIndicator) {
+        ActionRunners.runSmartBackground(project, "Finding Related Resources...") { indicator: ProgressIndicator ->
                 try {
                     indicator.isIndeterminate = false
                     indicator.text = "Analyzing resource relationships..."
                     
                     // Find all related resources
-                    val resources = runBlocking {
-                        ResourceFinder.findRelatedResources(selectedFiles, project)
-                    }
+                    val resources = runBlocking { ResourceFinder.findRelatedResources(selectedFiles, project) }
                     
                     if (resources.isEmpty()) {
                         NotificationUtils.showNotification(
@@ -52,7 +44,7 @@ class ExportWithResourcesAction : AnAction() {
                             "No related templates, styles, or resources found for the selected files",
                             com.intellij.notification.NotificationType.INFORMATION
                         )
-                        return
+                        return@runSmartBackground
                     }
                     
                     // Combine selected files with their resources
@@ -85,7 +77,6 @@ class ExportWithResourcesAction : AnAction() {
                         project,
                         allFiles.toTypedArray()
                     )
-                    
                 } catch (e: Exception) {
                     NotificationUtils.showNotification(
                         project, 
@@ -94,8 +85,7 @@ class ExportWithResourcesAction : AnAction() {
                         com.intellij.notification.NotificationType.ERROR
                     )
                 }
-            }
-        })
+        }
     }
     
     override fun update(e: AnActionEvent) {

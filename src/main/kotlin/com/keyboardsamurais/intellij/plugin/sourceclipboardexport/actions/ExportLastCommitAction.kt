@@ -4,8 +4,10 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.ActionRunners
 import git4idea.history.GitHistoryUtils
 import git4idea.repo.GitRepositoryManager
 
@@ -20,36 +22,29 @@ class ExportLastCommitAction : AnAction() {
     
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
-        
-        logger.info("Finding files from last commit")
-        
-        val files = getFilesFromLastCommit(project)
-        
-        if (files.isEmpty()) {
+        ActionRunners.runSmartBackground(project, "Exporting Last Commit") { _: ProgressIndicator ->
+            logger.info("Finding files from last commit")
+            val files = getFilesFromLastCommit(project)
+            if (files.isEmpty()) {
+                com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils.showNotification(
+                    project,
+                    "No Files Found",
+                    "No files found in the last commit",
+                    com.intellij.notification.NotificationType.INFORMATION
+                )
+                return@runSmartBackground
+            }
+
+            logger.info("Found ${files.size} files from last commit")
+            val fileNames = files.take(5).joinToString(", ") { it.name } + if (files.size > 5) " and ${files.size - 5} more..." else ""
             com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils.showNotification(
                 project,
-                "No Files Found",
-                "No files found in the last commit",
+                "Exporting Last Commit",
+                "Exporting ${files.size} files: $fileNames",
                 com.intellij.notification.NotificationType.INFORMATION
             )
-            return
+            SmartExportUtils.exportFiles(project, files.sortedBy { it.path }.toTypedArray())
         }
-        
-        logger.info("Found ${files.size} files from last commit")
-        
-        // Show what we're about to export
-        val fileNames = files.take(5).joinToString(", ") { it.name } + 
-                       if (files.size > 5) " and ${files.size - 5} more..." else ""
-        
-        com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils.showNotification(
-            project,
-            "Exporting Last Commit",
-            "Exporting ${files.size} files: $fileNames",
-            com.intellij.notification.NotificationType.INFORMATION
-        )
-        
-        // Trigger export with files from last commit
-        SmartExportUtils.exportFiles(project, files.toTypedArray())
     }
     
     private fun getFilesFromLastCommit(project: Project): List<VirtualFile> {

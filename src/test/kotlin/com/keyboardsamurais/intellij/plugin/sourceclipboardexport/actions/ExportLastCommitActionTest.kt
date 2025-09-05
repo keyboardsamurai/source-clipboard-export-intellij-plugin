@@ -9,6 +9,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.testutils.ActionRunnersTestSetup
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
@@ -50,6 +51,9 @@ class ExportLastCommitActionTest {
         mockLogger = mockk(relaxed = true)
         mockVirtualFileManager = mockk(relaxed = true)
         mockVirtualFile = mockk(relaxed = true)
+        
+        // Set up ActionRunners mocks
+        ActionRunnersTestSetup.setupMocks(mockProject)
 
         // Set up default mock behaviors
         every { Logger.getInstance(ExportLastCommitAction::class.java) } returns mockLogger

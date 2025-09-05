@@ -8,10 +8,17 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.psi.*
+import com.intellij.psi.PsiFile
+import com.intellij.psi.PsiManager
+import com.intellij.psi.PsiNameIdentifierOwner
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.searches.ReferencesSearch
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicInteger
@@ -27,17 +34,34 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 object DependencyFinder {
 
+    object Config {
+        private fun intProp(key: String, default: Int) = System.getProperty(key)?.toIntOrNull() ?: default
+        private fun longProp(key: String, default: Long) = System.getProperty(key)?.toLongOrNull() ?: default
+        private fun setProp(key: String, default: Set<String>) =
+            System.getProperty(key)?.split(',')
+                ?.map { it.trim() }
+                ?.filter { it.isNotEmpty() }
+                ?.toSet()
+                ?: default
+
+        val maxResultsPerSearch: Int = intProp("sce.maxResults", 100)
+        val maxConcurrentPsiSearches: Int = intProp("sce.maxConcurrentPsi", 2)
+        val elementBatchSize: Int = intProp("sce.elementBatchSize", 20)
+        val maxFileSizeBytes: Long = longProp("sce.maxFileSizeBytes", 500_000)
+        val maxElementsPerFile: Int = intProp("sce.maxElementsPerFile", 50)
+        val maxTraversalDepth: Int = intProp("sce.maxTraversalDepth", 3)
+        val searchExtensions: Set<String> = setProp(
+            "sce.searchExt",
+            setOf("js", "jsx", "ts", "tsx", "kt", "java", "py", "vue", "svelte", "xml", "yml", "yaml")
+        )
+        val skipDirs: Set<String> = setProp(
+            "sce.skipDirs",
+            setOf("node_modules", ".git", "build", "dist", "target", "out", ".idea")
+        )
+    }
+
     private val LOG = Logger.getInstance(DependencyFinder::class.java)
     private val dependentsCache = ConcurrentHashMap<String, Set<VirtualFile>>()
-    
-    // Configuration constants
-    private const val MAX_RESULTS_PER_SEARCH = 100
-    private const val MAX_CONCURRENT_PSI_SEARCHES = 2
-    private const val ELEMENT_BATCH_SIZE = 20
-    private const val MAX_FILE_SIZE_BYTES = 500_000
-    private const val MAX_ELEMENTS_PER_FILE = 50
-    private const val MAX_TRAVERSAL_DEPTH = 3
-    private val SKIP_DIRS = setOf("node_modules", ".git", "build", "dist", "target", "out", ".idea")
 
     /**
      * Finds files that depend on the given source files.
@@ -47,7 +71,7 @@ object DependencyFinder {
         files: Array<VirtualFile>,
         project: Project,
         alreadyIncludedFiles: Set<VirtualFile> = emptySet(),
-        maxResults: Int = MAX_RESULTS_PER_SEARCH
+        maxResults: Int = Config.maxResultsPerSearch
     ): Set<VirtualFile> = withContext(Dispatchers.IO) {
         LOG.warn("Starting hybrid dependency search for ${files.size} files.")
         val startTime = System.currentTimeMillis()
@@ -85,7 +109,7 @@ object DependencyFinder {
         }
         
         // Limit concurrent PSI operations to prevent IDE freeze
-        val concurrencyLimit = MAX_CONCURRENT_PSI_SEARCHES
+        val concurrencyLimit = Config.maxConcurrentPsiSearches
         val semaphore = Semaphore(concurrencyLimit)
 
         coroutineScope {
@@ -111,7 +135,7 @@ object DependencyFinder {
                         if (elementsToSearch.isEmpty()) return@async
 
                         // Process elements in batches for better performance
-                        elementsToSearch.chunked(ELEMENT_BATCH_SIZE).forEach { batch ->
+                        elementsToSearch.chunked(Config.elementBatchSize).forEach { batch ->
                             // Check cancellation between batches
                             ProgressManager.checkCanceled()
                             
@@ -164,7 +188,10 @@ object DependencyFinder {
         project: Project,
         alreadyIncludedFiles: Set<VirtualFile> = emptySet()
     ): Set<VirtualFile> {
-        val projectRoot = ProjectRootManager.getInstance(project).contentRoots.firstOrNull() ?: return emptySet()
+        val projectRoots = ReadAction.compute<Array<VirtualFile>, Exception> {
+            ProjectRootManager.getInstance(project).contentRoots
+        }
+        if (projectRoots.isEmpty()) return emptySet()
         val candidates = ConcurrentHashMap.newKeySet<VirtualFile>()
 
         val searchTerms = ReadAction.compute<Set<String>, Exception> {
@@ -182,23 +209,26 @@ object DependencyFinder {
 
         val filesToScan = mutableListOf<VirtualFile>()
         val inputFilesSet = sourceFiles.toSet()
-        VfsUtil.iterateChildrenRecursively(projectRoot,
-            { file -> !file.isDirectory || file.name !in SKIP_DIRS },
-            { file ->
-                if (!file.isDirectory && file.extension in setOf("js", "jsx", "ts", "tsx", "kt", "java", "py", "vue", "svelte", "xml", "yml", "yaml")) {
-                    // Skip files that are already in the input set or already included
-                    if (file !in inputFilesSet && file !in alreadyIncludedFiles) {
-                        filesToScan.add(file)
+        projectRoots.forEach { projectRoot ->
+            VfsUtil.iterateChildrenRecursively(
+                projectRoot,
+                { file -> !file.isDirectory || file.name !in Config.skipDirs },
+                { file ->
+                    if (!file.isDirectory && file.extension in Config.searchExtensions) {
+                        if (file !in inputFilesSet && file !in alreadyIncludedFiles) {
+                            filesToScan.add(file)
+                        }
                     }
+                    true
                 }
-                true
-            })
+            )
+        }
 
         coroutineScope {
             val jobs = filesToScan.map { fileToScan ->
                 async(Dispatchers.IO) {
                     try {
-                        if (fileToScan.length > MAX_FILE_SIZE_BYTES) return@async
+                        if (fileToScan.length > Config.maxFileSizeBytes) return@async
                         val content = VfsUtil.loadText(fileToScan)
                         if (combinedPattern.containsMatchIn(content)) {
                             candidates.add(fileToScan)
@@ -239,7 +269,7 @@ object DependencyFinder {
      */
     private fun findReferenceableElementsOptimized(file: PsiFile): List<com.intellij.psi.PsiElement> {
         val elements = mutableListOf<com.intellij.psi.PsiElement>()
-        val maxElements = MAX_ELEMENTS_PER_FILE
+        val maxElements = Config.maxElementsPerFile
         
         // First, try to get the top-level elements
         file.children.filterIsInstance<PsiNameIdentifierOwner>().take(maxElements).forEach {
@@ -248,7 +278,7 @@ object DependencyFinder {
         
         // If we haven't reached the limit, do a limited recursive search
         if (elements.size < maxElements) {
-            file.accept(DepthLimitedVisitor(MAX_TRAVERSAL_DEPTH, elements, maxElements))
+            file.accept(DepthLimitedVisitor(Config.maxTraversalDepth, elements, maxElements))
         }
         
         // Always add the file itself for import references
@@ -302,16 +332,16 @@ object DependencyFinder {
      * Warn if configuration might cause performance issues
      */
     fun validateConfiguration(project: Project, selectedFilesCount: Int) {
-        if (selectedFilesCount > 10 && MAX_CONCURRENT_PSI_SEARCHES > 2) {
-            LOG.warn("WARNING: High concurrency ($MAX_CONCURRENT_PSI_SEARCHES) with many files ($selectedFilesCount) may cause IDE freezing")
+        if (selectedFilesCount > 10 && Config.maxConcurrentPsiSearches > 2) {
+            LOG.warn("WARNING: High concurrency (${Config.maxConcurrentPsiSearches}) with many files ($selectedFilesCount) may cause IDE freezing")
         }
         
         if (selectedFilesCount > 5) {
             LOG.warn("WARNING: Processing $selectedFilesCount files may be slow")
         }
         
-        if (MAX_ELEMENTS_PER_FILE > 100) {
-            LOG.warn("WARNING: High maxElementsPerFile ($MAX_ELEMENTS_PER_FILE) may cause slow PSI parsing")
+        if (Config.maxElementsPerFile > 100) {
+            LOG.warn("WARNING: High maxElementsPerFile (${Config.maxElementsPerFile}) may cause slow PSI parsing")
         }
     }
 }
