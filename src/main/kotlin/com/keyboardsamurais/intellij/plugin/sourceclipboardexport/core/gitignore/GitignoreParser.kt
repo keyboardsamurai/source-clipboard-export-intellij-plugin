@@ -228,15 +228,25 @@ class GitignoreParser(val gitignoreFile: VirtualFile) {
          * @return MatchResult indicating match type or NO_MATCH.
          */
         fun matches(normalizedPath: String, isDir: Boolean): MatchResult {
-            val pathObj : Path = try {
-                 FS.getPath(normalizedPath)
+            val pathObj: Path? = try {
+                FS.getPath(normalizedPath)
             } catch (e: InvalidPathException) {
-                // Log runtime path errors as DEBUG - might happen with unusual filenames
+                // On Windows (or other FS), names with '*' or '?' are invalid.
+                // Do NOT return; fall back to string/regex matching.
                 LOG.debug("Rule '$original': Invalid path syntax: $normalizedPath", e)
-                return MatchResult.NO_MATCH
+                null
             } catch (e: Exception) {
-                 LOG.debug("Rule '$original': Error creating Path object for: $normalizedPath", e)
-                 return MatchResult.NO_MATCH
+                LOG.debug("Rule '$original': Error creating Path object for: $normalizedPath", e)
+                null
+            }
+
+            val fileNameOnly = try {
+                pathObj?.fileName?.toString()
+            } catch (_: Exception) {
+                null
+            } ?: run {
+                val idx = normalizedPath.lastIndexOf('/')
+                if (idx >= 0) normalizedPath.substring(idx + 1) else normalizedPath
             }
 
             var hit = false
@@ -244,12 +254,10 @@ class GitignoreParser(val gitignoreFile: VirtualFile) {
 
             /* ── 1. Simple String Match (no wildcards, not dirOnly) ──────── */
             if (simpleStringMatch) {
-                if (rooted || pattern.contains('/')) {
-                    hit = (normalizedPath == pattern)
+                hit = if (rooted || pattern.contains('/')) {
+                    normalizedPath == pattern
                 } else {
-                    // Use pathObj.fileName which handles separators correctly.
-                    // Check if pathObj has a filename (it might be just "foo")
-                    hit = (pathObj.fileName?.toString() == pattern)
+                    fileNameOnly == pattern
                 }
                 if (hit) matchedBy = MatchSource.SIMPLE
                 if (LOG.isTraceEnabled && hit) LOG.trace("Rule '$original': Simple match success for '$normalizedPath'")
@@ -258,13 +266,13 @@ class GitignoreParser(val gitignoreFile: VirtualFile) {
             // Try Glob Matcher first if it exists
             else if (matcher != null) {
                 try {
-                    // For directory patterns, also check if the path is inside the directory
-                    if (dirOnly && normalizedPath.startsWith(pattern + "/")) {
+                    // Directory contents quick check (string-only, no Path needed)
+                    if (dirOnly && normalizedPath.startsWith("$pattern/")) {
                         hit = true
                         matchedBy = MatchSource.GLOB
                         if (LOG.isTraceEnabled) LOG.trace("Rule '$original': Directory pattern matches path inside directory '$normalizedPath'")
                     }
-                    // For complex patterns with directory and extension, special handling
+                    // Special handling for patterns like "doc/**/*.pdf"
                     else if (pattern.contains("/**/*.") && normalizedPath.startsWith(pattern.substringBefore("/**/*."))) {
                         val extension = pattern.substringAfterLast(".")
                         if (normalizedPath.endsWith(".$extension")) {
@@ -273,59 +281,68 @@ class GitignoreParser(val gitignoreFile: VirtualFile) {
                             if (LOG.isTraceEnabled) LOG.trace("Rule '$original': Complex pattern matches path with extension '$normalizedPath'")
                         }
                     }
-                    // Standard glob matching
-                    else if (matcher.matches(pathObj)) {
+                    // Try PathMatcher if we have a valid Path
+                    else if (pathObj != null && matcher.matches(pathObj)) {
                         hit = true
                         matchedBy = MatchSource.GLOB
                         if (LOG.isTraceEnabled) LOG.trace("Rule '$original': PathMatcher glob '${matcher}' SUCCESS for '$normalizedPath'")
+                    }
+                    // Last resort: emulate the glob against the full path with a regex when we don't have a Path
+                    else if (pathObj == null) {
+                        val hasSlash = pattern.contains('/')
+                        val fullGlob = buildString {
+                            if (!rooted && !pattern.startsWith("**") && !hasSlash) append("**/")
+                            append(pattern)
+                            if (dirOnly && !pattern.endsWith("/**")) append("/**")
+                        }
+                        val fullRegex = try {
+                            globToRegex(fullGlob)
+                        } catch (e: Exception) {
+                            LOG.debug("Rule '$original': Error converting glob '$fullGlob' to regex", e)
+                            null
+                        }
+                        if (fullRegex != null && fullRegex.matches(normalizedPath)) {
+                            hit = true
+                            matchedBy = MatchSource.GLOB
+                            if (LOG.isTraceEnabled) LOG.trace("Rule '$original': Regex fallback glob match SUCCESS for '$normalizedPath'")
+                        }
                     } else {
                          if (LOG.isTraceEnabled) LOG.trace("Rule '$original': PathMatcher glob '${matcher}' FAILED for '$normalizedPath'")
                     }
                 } catch (e: Exception) {
                     // Log runtime matching errors as DEBUG
-                    LOG.debug("Rule '$original': Error during PathMatcher.matches for path '$normalizedPath'", e)
+                    LOG.debug("Rule '$original': Error during glob matching for path '$normalizedPath'", e)
                     // hit remains false
                 }
 
                 /* ── 3. Filename-only regex fallback (if Glob didn't hit) ── */
                 // Apply if: Glob didn't hit, regex exists
                 if (!hit && fileRegex != null) {
-                    val name = pathObj.fileName?.toString()
-                    if (!name.isNullOrEmpty()) {
-                         try {
-                            val regexHit = fileRegex.matches(name)
-                            if (regexHit) {
-                                hit = true
-                                // If matcher also exists, prefer GLOB source? No, REGEX is more specific here.
-                                matchedBy = MatchSource.REGEX
-                                if (LOG.isTraceEnabled) LOG.trace("Rule '$original': fileRegex '$fileRegex' SUCCESS for filename '$name' (path '$normalizedPath')")
-                            } else {
-                                if (LOG.isTraceEnabled) LOG.trace("Rule '$original': fileRegex '$fileRegex' FAILED for filename '$name' (path '$normalizedPath')")
-                            }
-                         } catch (e: Exception) {
-                             // Log runtime matching errors as DEBUG
-                             LOG.debug("Rule '$original': Error during fileRegex.matches for name '$name'", e)
-                         }
-                    } else {
-                         if (LOG.isTraceEnabled) LOG.trace("Rule '$original': fileRegex fallback skipped for path '$normalizedPath' (no filename)")
+                    try {
+                        if (fileRegex.matches(fileNameOnly)) {
+                            hit = true
+                            matchedBy = MatchSource.REGEX
+                            if (LOG.isTraceEnabled) LOG.trace("Rule '$original': fileRegex '$fileRegex' SUCCESS for filename '$fileNameOnly' (path '$normalizedPath')")
+                        } else {
+                            if (LOG.isTraceEnabled) LOG.trace("Rule '$original': fileRegex '$fileRegex' FAILED for filename '$fileNameOnly' (path '$normalizedPath')")
+                        }
+                    } catch (e: Exception) {
+                        // Log runtime matching errors as DEBUG
+                        LOG.debug("Rule '$original': Error during fileRegex.matches for name '$fileNameOnly'", e)
                     }
                 }
             }
             // Case where only fileRegex might apply (e.g., simpleStringMatch=false but matcher failed to create?)
             else if (fileRegex != null) {
-                 val name = pathObj.fileName?.toString()
-                 if (!name.isNullOrEmpty()) {
-                     try {
-                         if (fileRegex.matches(name)) {
-                             hit = true
-                             // If matcher also exists, prefer GLOB source? No, REGEX is more specific here.
-                             matchedBy = MatchSource.REGEX
-                             if (LOG.isTraceEnabled) LOG.trace("Rule '$original': fileRegex (no matcher) SUCCESS for filename '$name'")
-                         }
-                     } catch (e: Exception) {
-                          LOG.debug("Rule '$original': Error during fileRegex.matches (no matcher) for name '$name'", e)
-                     }
-                 }
+                try {
+                    if (fileRegex.matches(fileNameOnly)) {
+                        hit = true
+                        matchedBy = MatchSource.REGEX
+                        if (LOG.isTraceEnabled) LOG.trace("Rule '$original': fileRegex (no matcher) SUCCESS for filename '$fileNameOnly'")
+                    }
+                } catch (e: Exception) {
+                    LOG.debug("Rule '$original': Error during fileRegex.matches (no matcher) for name '$fileNameOnly'", e)
+                }
             }
 
 
@@ -337,40 +354,30 @@ class GitignoreParser(val gitignoreFile: VirtualFile) {
                 // Get the base directory name the rule targets (e.g., "build" from "**/build/")
                 val dirNamePattern = pattern.substringAfterLast('/')
                 // Check if the path's filename component matches the target directory name
-                val filenameMatchesDirName = pathObj.fileName?.toString() == dirNamePattern
+                val filenameMatchesDirName = fileNameOnly == dirNamePattern
 
                 when (matchedBy) {
                     MatchSource.GLOB -> {
-                        // Glob `**/pattern/**` matched.
-                        // If it matched a FILE whose name is exactly the target directory name, reject it.
-                        // Example: Rule `dir/`, Path `dir` (isDir=false). Glob matches, but this check rejects.
+                        // If we matched a FILE whose name equals the directory rule, reject it.
                         if (filenameMatchesDirName && !isDir) {
-                             if (LOG.isTraceEnabled) LOG.trace("Rule '$original' (dirOnly): Glob matched file '$normalizedPath' with same name as pattern base. -> REJECTED (NO_MATCH)")
-                             return MatchResult.NO_MATCH
+                            if (LOG.isTraceEnabled) LOG.trace("Rule '$original' (dirOnly): Glob matched file '$normalizedPath' with same name as pattern. -> REJECTED (NO_MATCH)")
+                            return MatchResult.NO_MATCH
                         }
-                        // Example: Rule `dir/`, Path `dir` (isDir=true). Glob matches, check passes. -> OK
-                        // Example: Rule `dir/`, Path `dir/file.txt`. Glob matches, filename != dirName, check passes. -> OK
-                        if (LOG.isTraceEnabled) LOG.trace("Rule '$original' (dirOnly): Glob match is valid.")
                     }
                     MatchSource.REGEX -> {
-                        // Regex matched the filename (e.g., rule `build/`, path `build`).
-                        // This is only valid for dirOnly if the path IS a directory.
+                        // Regex on filename is only valid for dirOnly if target is a directory
                         if (!isDir) {
                             if (LOG.isTraceEnabled) LOG.trace("Rule '$original' (dirOnly): fileRegex matched file '$normalizedPath', but rule requires directory. -> REJECTED (NO_MATCH)")
                             return MatchResult.NO_MATCH
                         }
-                        // Example: Rule `build/`, Path `build` (isDir=true). Regex matches, isDir=true, check passes -> OK
-                        if (LOG.isTraceEnabled) LOG.trace("Rule '$original' (dirOnly): fileRegex match on directory name is valid.")
                     }
                     MatchSource.SIMPLE -> {
-                        // Simple match shouldn't happen if dirOnly=true due to init logic
                         LOG.warn("Rule '$original' (dirOnly): Unexpected match by SIMPLE source.")
-                        return MatchResult.NO_MATCH // Treat as error / no match
+                        return MatchResult.NO_MATCH
                     }
                     MatchSource.NONE -> {
-                        // Should not happen if hit=true
                         LOG.warn("Rule '$original' (dirOnly): Hit=true but matchedBy=NONE.")
-                        return MatchResult.NO_MATCH // Treat as error / no match
+                        return MatchResult.NO_MATCH
                     }
                 }
             }
