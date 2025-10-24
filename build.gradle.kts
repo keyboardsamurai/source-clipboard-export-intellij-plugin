@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.keyboardsamurais.intellij.plugin"
-version = "2.0"
+version = "2.1"
 
 repositories {
     mavenCentral()
@@ -27,7 +27,6 @@ dependencies {
 
         pluginVerifier()
         zipSigner()
-        instrumentationTools()
     }
 
     // Test dependencies
@@ -35,6 +34,7 @@ dependencies {
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
     testImplementation("org.junit.jupiter:junit-jupiter-params:5.10.2") // For parameterized tests
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5:1.9.24")
+    // Mockito 5.3.0+ includes inline mocking by default in mockito-core
     testImplementation("org.mockito:mockito-core:5.17.0")
     testImplementation("org.mockito:mockito-junit-jupiter:5.17.0")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.4.0")
@@ -88,7 +88,7 @@ tasks {
         }
 
         // Increase heap size to avoid OutOfMemoryError
-        jvmArgs("-Xmx2g")
+        jvmArgs("-Xmx2g", "-XX:+EnableDynamicAgentLoading")
 
         // Point to our custom logging.properties file
         systemProperty("java.util.logging.config.file", "${project.projectDir}/src/test/resources/logging.properties")
@@ -103,5 +103,31 @@ tasks {
         doLast {
             println("All tests have been executed.")
         }
+    }
+
+    // Create a task to set up disabled plugins before running IDE
+    val setupDisabledPlugins by registering {
+        notCompatibleWithConfigurationCache("Creates files at execution time")
+        
+        doLast {
+            val sandboxDir = layout.buildDirectory.dir("idea-sandbox/IC-2024.2.4/config").get().asFile
+            sandboxDir.mkdirs()
+            val disabledPluginsFile = sandboxDir.resolve("disabled_plugins.txt")
+            disabledPluginsFile.writeText("com.intellij.gradle\n")
+            logger.lifecycle("Created disabled_plugins.txt at: ${disabledPluginsFile.absolutePath}")
+        }
+    }
+
+    // For sandbox runs, disable the Gradle plugin to avoid startup exceptions in 2024.2.x
+    // caused by Gradle JVM support matrix parsing newer Java versions.
+    runIde {
+        // Ensure disabled plugins are set up before running
+        dependsOn(setupDisabledPlugins)
+        
+        // Disable configuration cache for this task
+        notCompatibleWithConfigurationCache("Depends on file creation task")
+        
+        // Increase memory
+        jvmArgs = listOf("-Xmx2048m")
     }
 }

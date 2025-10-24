@@ -2,6 +2,7 @@ package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.gitignor
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VfsUtil
@@ -24,6 +25,7 @@ import java.util.concurrent.ConcurrentHashMap
  * 
  * It also listens for VFS events to invalidate the cache when .gitignore files are modified.
  */
+@Service(Service.Level.PROJECT)
 class HierarchicalGitignoreParser(private val project: Project) : Disposable {
     private val logger = Logger.getInstance(HierarchicalGitignoreParser::class.java)
 

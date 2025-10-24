@@ -85,13 +85,10 @@ class RepositorySummary(
     }
 
     /**
-     * Estimates the number of tokens in a string.
-     * This is a simple estimation based on whitespace and punctuation.
+     * Estimates the number of tokens in a string using the shared estimator.
      */
     private fun estimateTokenCount(text: String): Int {
-        // Split by whitespace and punctuation
-        val tokens = text.split(Regex("[\\s\\p{Punct}]+"))
-        return tokens.count { it.isNotEmpty() }
+        return StringUtils.estimateTokensWithSubwordHeuristic(text)
     }
 
     /**

@@ -115,14 +115,8 @@ object FileUtils {
         if (file.length == 0L) return false
         val sampleSize = min(file.length, 1024).toInt()
         val bytes = try {
-            // Try to use contentsToByteArray first, which is more likely to be mocked in tests
-            try {
-                val allBytes = file.contentsToByteArray()
-                allBytes.take(sampleSize).toByteArray()
-            } catch (e: Exception) {
-                // Fall back to inputStream if contentsToByteArray fails
-                file.inputStream.use { it.readNBytes(sampleSize) }
-            }
+            // Always read only a small prefix of the file to avoid loading large files fully
+            file.inputStream.use { it.readNBytes(sampleSize) }
         } catch (e: Exception) {
             LOGGER.warn("Could not read file sample for binary check: ${file.path}", e)
             return true // Treat as binary if unreadable
@@ -164,8 +158,17 @@ object FileUtils {
      * @return The appropriate comment prefix for the file
      */
     fun getCommentPrefix(file: VirtualFile): String {
-        val extension = file.extension?.lowercase() ?: ""
-        return AppConstants.COMMENT_PREFIXES[extension] ?: AppConstants.FILENAME_PREFIX
+        val extension = file.extension?.lowercase()
+        // Try by extension first
+        val byExt = extension?.let { AppConstants.COMMENT_PREFIXES[it] }
+        if (byExt != null) return byExt
+        // Fallback to special filenames without extensions (e.g., Dockerfile, Makefile)
+        val name: String? = try { file.name } catch (_: Exception) { null }
+        if (!name.isNullOrBlank()) {
+            AppConstants.COMMENT_PREFIXES[name]?.let { return it }
+            AppConstants.COMMENT_PREFIXES[name.lowercase()]?.let { return it }
+        }
+        return AppConstants.FILENAME_PREFIX
     }
 
     /**

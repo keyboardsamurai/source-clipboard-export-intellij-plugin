@@ -87,11 +87,10 @@ class DumpFolderContentsAction : AnAction() {
                             NotificationType.WARNING
                         )
                     } else {
-                        copyToClipboard(result.content, result.processedFileCount, project, selectedFiles)
+                        copyToClipboard(result.content, result, project)
                     }
 
                     logger.info("Action completed: DumpFolderContentsAction")
-                    showOperationSummary(result, settingsState, project)
 
                     if (result.limitReached) {
                         notifyFileLimitReached(settingsState.fileCount, project)
@@ -120,7 +119,7 @@ class DumpFolderContentsAction : AnAction() {
         })
     }
 
-    private fun copyToClipboard(text: String, fileCount: Int, project: Project?, selectedFiles: Array<VirtualFile>) {
+    private fun copyToClipboard(text: String, fileCount: Int, project: Project?, includedPaths: List<String>) {
         val charCount = text.length
         val approxTokens = StringUtils.estimateTokensWithSubwordHeuristic(text)
         val sizeInBytes = text.toByteArray(Charsets.UTF_8).size
@@ -137,18 +136,21 @@ class DumpFolderContentsAction : AnAction() {
                 String.format("%.1fKB", sizeInBytes / 1024.0)
             }
 
+            val message = StringBuilder().apply {
+                append("Copied $fileCount files ($formattedSize, ~$formattedApproxTokens tokens)")
+            }.toString()
+
             NotificationUtils.showNotification(
                 project,
                 "Content Copied",
-                "Copied $fileCount files ($formattedSize, ~$formattedApproxTokens tokens)",
+                message,
                 NotificationType.INFORMATION
             )
             
             // Record in export history
             project?.let { proj ->
                 val history = ExportHistory.getInstance(proj)
-                val filePaths = selectedFiles.map { it.path }
-                history.addExport(fileCount, sizeInBytes, approxTokens, filePaths)
+                history.addExport(fileCount, sizeInBytes, approxTokens, includedPaths)
             }
         } catch (e: Exception) {
             logger.error("Failed to set clipboard contents", e)
@@ -159,6 +161,99 @@ class DumpFolderContentsAction : AnAction() {
                 NotificationType.ERROR
             )
         }
+    }
+
+    // Overload that accepts full result to include a richer summary in notification
+    private fun copyToClipboard(text: String, result: SourceExporter.ExportResult, project: Project?) {
+        try {
+            val stringSelection = StringSelection(text)
+            CopyPasteManager.getInstance().setContents(stringSelection)
+
+            val sizeInBytes = text.toByteArray(Charsets.UTF_8).size
+            val sizeInMB = sizeInBytes / (1024.0 * 1024.0)
+            val formattedSize = if (sizeInMB >= 1.0) {
+                String.format("%.1fMB", sizeInMB)
+            } else {
+                String.format("%.1fKB", sizeInBytes / 1024.0)
+            }
+            val approxTokens = StringUtils.estimateTokensWithSubwordHeuristic(text)
+            val formattedApproxTokens = String.format("%,d", approxTokens)
+
+            val summaryHtml = buildOperationSummaryHtml(result, SourceClipboardExportSettings.getInstance().state)
+            val message = StringBuilder().apply {
+                append("Copied ${result.processedFileCount} files ($formattedSize, ~$formattedApproxTokens tokens)")
+                if (summaryHtml.isNotBlank()) {
+                    append("<br>")
+                    append(summaryHtml)
+                }
+            }.toString()
+
+            NotificationUtils.showNotification(
+                project,
+                "Content Copied",
+                message,
+                NotificationType.INFORMATION
+            )
+
+            // Record in export history
+            project?.let { proj ->
+                val history = ExportHistory.getInstance(proj)
+                history.addExport(result.processedFileCount, sizeInBytes, approxTokens, result.includedPaths)
+            }
+        } catch (e: Exception) {
+            logger.error("Failed to set clipboard contents", e)
+            NotificationUtils.showNotification(
+                project,
+                "Error",
+                "Failed to copy to clipboard: ${e.message}",
+                NotificationType.ERROR
+            )
+        }
+    }
+
+    // Backward-compatible overload for tests expecting the old signature
+    @Suppress("unused")
+    private fun copyToClipboard(text: String, fileCount: Int, project: Project?, selectedFiles: Array<VirtualFile>) {
+        val paths = selectedFiles.map { it.path }
+        copyToClipboard(text, fileCount, project, paths)
+    }
+
+    // Build the HTML string for export operation summary (shared with the notification)
+    private fun buildOperationSummaryHtml(
+        result: SourceExporter.ExportResult,
+        settings: SourceClipboardExportSettings.State
+    ): String {
+        val summaryLines = mutableListOf<String>()
+        summaryLines.add("<b>Processed files: ${result.processedFileCount}</b>")
+
+        val totalExcluded = result.excludedByFilterCount + result.excludedBySizeCount +
+                result.excludedByBinaryContentCount + result.excludedByIgnoredNameCount +
+                result.excludedByGitignoreCount
+        if (totalExcluded > 0) {
+            summaryLines.add("Excluded files: $totalExcluded")
+            if (result.excludedByFilterCount > 0) {
+                summaryLines.add("&nbsp;&nbsp;- By filter: ${result.excludedByFilterCount}")
+                if (result.excludedExtensions.isNotEmpty()) {
+                    val topTypes = result.excludedExtensions.take(5).joinToString(", ")
+                    val moreTypes = if (result.excludedExtensions.size > 5) ", ..." else ""
+                    summaryLines.add("&nbsp;&nbsp;&nbsp;&nbsp;<i>Types: $topTypes$moreTypes</i>")
+                }
+            }
+            if (result.excludedBySizeCount > 0) summaryLines.add("&nbsp;&nbsp;- By size (> ${settings.maxFileSizeKb} KB): ${result.excludedBySizeCount}")
+            if (result.excludedByBinaryContentCount > 0) summaryLines.add("&nbsp;&nbsp;- Binary content: ${result.excludedByBinaryContentCount}")
+            if (result.excludedByIgnoredNameCount > 0) summaryLines.add("&nbsp;&nbsp;- Ignored name: ${result.excludedByIgnoredNameCount}")
+            if (result.excludedByGitignoreCount > 0) summaryLines.add("&nbsp;&nbsp;- By .gitignore: ${result.excludedByGitignoreCount}")
+        }
+
+        if (settings.areFiltersEnabled && settings.filenameFilters.isNotEmpty()) {
+            summaryLines.add("Active filters: ${settings.filenameFilters.joinToString(", ")}")
+        } else if (settings.areFiltersEnabled && settings.filenameFilters.isEmpty()) {
+            summaryLines.add("Filters enabled, but list is empty (all non-binary allowed).")
+        } else {
+            summaryLines.add("Filters disabled.")
+        }
+
+        return summaryLines.joinToString("<br>")
     }
 
     private fun notifyFileLimitReached(limit: Int, project: Project?) {

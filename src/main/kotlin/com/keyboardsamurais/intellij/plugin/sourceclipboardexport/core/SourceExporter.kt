@@ -1,5 +1,6 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProgressIndicator
@@ -13,11 +14,11 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.StringUti
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
@@ -46,8 +47,19 @@ class SourceExporter(
     // Thread-safe counter for generating unique task identifiers
     private val taskCounter = AtomicInteger(0)
 
-    // Store the hierarchical gitignore parser instance
-    private val hierarchicalGitignoreParser = HierarchicalGitignoreParser(project)
+    // Prefer the project-scoped gitignore parser service; in unit tests fall back to a local instance
+    private val hierarchicalGitignoreParser = run {
+        val app = try { ApplicationManager.getApplication() } catch (_: Exception) { null }
+        if (app == null || app.isUnitTestMode) {
+            HierarchicalGitignoreParser(project)
+        } else {
+            try {
+                project.getService(HierarchicalGitignoreParser::class.java)
+            } catch (_: Throwable) {
+                null
+            } ?: HierarchicalGitignoreParser(project)
+        }
+    }
 
     // Track explicitly selected top-level files to allow .gitignore override for those files only
     private var explicitTopLevelFiles: Set<VirtualFile> = emptySet()
@@ -61,7 +73,8 @@ class SourceExporter(
         val excludedByIgnoredNameCount: Int,
         val excludedByGitignoreCount: Int,
         val excludedExtensions: Set<String>,
-        val limitReached: Boolean
+        val limitReached: Boolean,
+        val includedPaths: List<String>
     )
 
     /**
@@ -104,9 +117,9 @@ class SourceExporter(
         // Store explicit selection for .gitignore override on files
         explicitTopLevelFiles = selectedFiles.toSet()
 
-        // Use a map to store local buffers for each coroutine
-        val localBuffers = ConcurrentHashMap<Long, MutableList<String>>()
-        val visitedFiles = ConcurrentHashMap.newKeySet<VirtualFile>() // Use a concurrent set for visited tracking
+    // Use a map to store local (path, content) entries for each coroutine
+    val localEntries = ConcurrentHashMap<Long, MutableList<Pair<String, String>>>()
+    val visitedFiles = ConcurrentHashMap.newKeySet<VirtualFile>() // Use a concurrent set for visited tracking
 
         coroutineScope {
             val scopeJob = SupervisorJob()
@@ -119,12 +132,12 @@ class SourceExporter(
                 launch(scopeJob + limitedDispatcher) {
                     ensureActive()
                     // Create a local buffer for this coroutine
-                    val localBuffer = mutableListOf<String>()
+                    val localBuffer = mutableListOf<Pair<String, String>>()
                     // Store the buffer in the map using a unique task ID as the key
                     val taskId = taskCounter.incrementAndGet().toLong()
-                    localBuffers[taskId] = localBuffer
+                    localEntries[taskId] = localBuffer
                     // processEntry will handle recursion and visited checks
-                    processEntry(file, this, localBuffer, visitedFiles)
+                    processEntry(file, this, scopeJob, localBuffer, visitedFiles)
                 }
             }
             scopeJob.children.forEach { it.join() }
@@ -132,11 +145,15 @@ class SourceExporter(
             scopeJob.join()
         }
 
-        // Merge all local buffers into the shared list
+        // Merge all local buffers and sort deterministically by relative path
+        val mergedEntries = mutableListOf<Pair<String, String>>()
+        localEntries.values.forEach { buffer -> mergedEntries.addAll(buffer) }
+        mergedEntries.sortBy { it.first }
+
+        // Build included paths and ordered file contents
+        val includedPaths = mergedEntries.map { it.first }
         fileContents.clear()
-        localBuffers.values.forEach { buffer ->
-            fileContents.addAll(buffer)
-        }
+        fileContents.addAll(mergedEntries.map { it.second })
 
         val finalProcessedCount = processedFileCount.get()
         val finalFileCount = fileCount.get()
@@ -146,20 +163,8 @@ class SourceExporter(
         val contentBuilder = StringBuilder()
 
         if (settings.includeDirectoryStructure) {
-            // Extract relative paths from file contents (they are prefixed with "// filename: ")
-            val filePaths = mutableListOf<String>()
-            for (i in 0 until fileContents.size) {
-                val content = fileContents[i]
-                if (content.startsWith(AppConstants.FILENAME_PREFIX)) {
-                    // Extract the path from the first line (before the first newline)
-                    val firstLine = content.substringBefore('\n')
-                    val path = firstLine.substring(AppConstants.FILENAME_PREFIX.length).trim()
-                    filePaths.add(path)
-                }
-            }
-
-            // Generate and add the directory tree
-            val directoryTree = FileUtils.generateDirectoryTree(filePaths, settings.includeFilesInStructure)
+            // Generate and add the directory tree from the actual included paths
+            val directoryTree = FileUtils.generateDirectoryTree(includedPaths, settings.includeFilesInStructure)
             if (directoryTree.isNotEmpty()) {
                 contentBuilder.append(directoryTree)
                 contentBuilder.append("\n\n")
@@ -190,57 +195,35 @@ class SourceExporter(
                 contentBuilder.append(fileContents.joinToString("\n"))
             }
             AppConstants.OutputFormat.MARKDOWN -> {
-                // Format as Markdown with code blocks
-                for (content in fileContents) {
-                    if (content.startsWith(AppConstants.FILENAME_PREFIX)) {
-                        // Extract the path from the first line
-                        val firstLine = content.substringBefore('\n')
-                        val path = firstLine.substring(AppConstants.FILENAME_PREFIX.length).trim()
-
-                        // Extract the file extension to use as language hint
-                        val extension = path.substringAfterLast('.', "").lowercase()
-                        // Use the markdown language hint mapping to get the proper language name
-                        val languageHint = if (extension.isNotEmpty()) {
-                            AppConstants.MARKDOWN_LANGUAGE_HINTS[extension] ?: "text"
-                        } else {
-                            "text"
-                        }
-
-                        // Add markdown heading for the file
-                        contentBuilder.append("### $path\n\n")
-
-                        // Add the content in a code block with language hint
-                        val fileContent = content.substringAfter('\n')
-                        contentBuilder.append("```$languageHint\n")
-                        contentBuilder.append(fileContent)
-                        contentBuilder.append("\n```\n\n")
+                // Format as Markdown with code blocks, ordered by path
+                for ((path, content) in mergedEntries) {
+                    val fileName = path.substringAfterLast('/')
+                    val extension = path.substringAfterLast('.', "").lowercase()
+                    val languageHint = if (extension.isNotEmpty()) {
+                        AppConstants.MARKDOWN_LANGUAGE_HINTS[extension]
+                            ?: "text"
                     } else {
-                        // If there's no filename prefix, just add the content in a code block
-                        contentBuilder.append("```\n")
-                        contentBuilder.append(content)
-                        contentBuilder.append("\n```\n\n")
+                        AppConstants.MARKDOWN_LANGUAGE_HINTS[fileName]
+                            ?: AppConstants.MARKDOWN_LANGUAGE_HINTS[fileName.lowercase()] ?: "text"
                     }
+
+                    contentBuilder.append("### $path\n\n")
+                    val body = if (settings.includePathPrefix && FileUtils.hasFilenamePrefix(content)) content.substringAfter('\n') else content
+                    contentBuilder.append("```$languageHint\n")
+                    contentBuilder.append(body)
+                    contentBuilder.append("\n```\n\n")
                 }
             }
             AppConstants.OutputFormat.XML -> {
-                // Format as XML for machine consumption
+                // Format as XML for machine consumption, ordered by path
                 contentBuilder.append("<files>\n")
-                for (content in fileContents) {
-                    if (content.startsWith(AppConstants.FILENAME_PREFIX)) {
-                        // Extract the path from the first line
-                        val firstLine = content.substringBefore('\n')
-                        val path = firstLine.substring(AppConstants.FILENAME_PREFIX.length).trim()
-
-                        // Extract the file content (everything after the first line)
-                        val fileContent = content.substringAfter('\n')
-
-                        // Add XML tags for the file
-                        contentBuilder.append("  <file path=\"${StringUtils.escapeXml(path)}\">\n")
-                        contentBuilder.append("    <content><![CDATA[\n")
-                        contentBuilder.append(fileContent)
-                        contentBuilder.append("\n    ]]></content>\n")
-                        contentBuilder.append("  </file>\n")
-                    }
+                for ((path, content) in mergedEntries) {
+                    val body = if (settings.includePathPrefix && FileUtils.hasFilenamePrefix(content)) content.substringAfter('\n') else content
+                    contentBuilder.append("  <file path=\"${StringUtils.escapeXml(path)}\">\n")
+                    contentBuilder.append("    <content><![CDATA[\n")
+                    contentBuilder.append(body)
+                    contentBuilder.append("\n    ]]></content>\n")
+                    contentBuilder.append("  </file>\n")
                 }
                 contentBuilder.append("</files>")
             }
@@ -256,7 +239,8 @@ class SourceExporter(
             excludedByIgnoredNameCount = excludedByIgnoredNameCount.get(),
             excludedByGitignoreCount = excludedByGitignoreCount.get(),
             excludedExtensions = excludedExtensions.toSet(),
-            limitReached = finalFileCount >= settings.fileCount
+            limitReached = finalFileCount >= settings.fileCount,
+            includedPaths = includedPaths
         )
     }
 
@@ -299,7 +283,13 @@ class SourceExporter(
      * @param localBuffer The local buffer to add file contents to.
      * @param visitedFiles The concurrent set to track visited files and prevent duplicates.
      */
-    private suspend fun processEntry(file: VirtualFile, scope: CoroutineScope, localBuffer: MutableList<String>, visitedFiles: MutableSet<VirtualFile>) {
+    private suspend fun processEntry(
+        file: VirtualFile,
+        scope: CoroutineScope,
+        parentJob: Job,
+        localBuffer: MutableList<Pair<String, String>>,
+        visitedFiles: MutableSet<VirtualFile>
+    ) {
         scope.ensureActive() // Check cancellation at the start
 
         // --- FIX: Perform the visited check AT THE TOP and make it atomic ---
@@ -319,6 +309,11 @@ class SourceExporter(
 
         // --- Handle directories recursively ---
         if (fileProps.isDirectory) {
+            // Early stop if file limit reached
+            if (fileCount.get() >= settings.fileCount) {
+                if (parentJob.isActive) parentJob.cancel("File limit reached")
+                return
+            }
             // Check for ignored directory names (e.g., "node_modules", "build")
             if (fileProps.name in settings.ignoredNames) {
                 logger.info("Skipping ignored directory by name: ${fileProps.path}")
@@ -345,10 +340,15 @@ class SourceExporter(
             children
                 ?.sortedBy { it.path }
                 ?.forEach { child ->
-                scope.ensureActive()
-                // The recursive call will handle the visited check for each child
-                processEntry(child, scope, localBuffer, visitedFiles)
-            }
+                    // Stop recursing if we've hit the file limit
+                    if (fileCount.get() >= settings.fileCount) {
+                        if (parentJob.isActive) parentJob.cancel("File limit reached")
+                        return@forEach
+                    }
+                    scope.ensureActive()
+                    // The recursive call will handle the visited check for each child
+                    processEntry(child, scope, parentJob, localBuffer, visitedFiles)
+                }
             return // End processing for this directory entry
         }
 
@@ -362,7 +362,7 @@ class SourceExporter(
 
         // The rest of the file processing logic (ignored names, gitignore, size, binary, etc.)
         // can now safely assume it's only dealing with files.
-        processFileWithChecks(file, fileProps, scope, localBuffer)
+        processFileWithChecks(file, fileProps, scope, parentJob, localBuffer)
     }
     
     /**
@@ -374,7 +374,13 @@ class SourceExporter(
      * @param scope The coroutine scope.
      * @param localBuffer The local buffer to add file contents to.
      */
-    private suspend fun processFileWithChecks(file: VirtualFile, fileProps: FileProperties, scope: CoroutineScope, localBuffer: MutableList<String>) {
+    private suspend fun processFileWithChecks(
+        file: VirtualFile,
+        fileProps: FileProperties,
+        scope: CoroutineScope,
+        parentJob: Job,
+        localBuffer: MutableList<Pair<String, String>>
+    ) {
         // Calculate relative path for this file
         val relativePath = try {
             ReadAction.compute<String?, Exception> {
@@ -426,7 +432,7 @@ class SourceExporter(
 
         // Process the file - delegate to the existing processSingleFile method
         logger.debug("Processing file: ${fileProps.path}")
-        processSingleFile(file, fileProps, relativePath ?: fileProps.name, scope, localBuffer)
+        processSingleFile(file, fileProps, relativePath ?: fileProps.name, scope, parentJob, localBuffer)
     }
 
 
@@ -439,7 +445,14 @@ class SourceExporter(
      * @param scope The coroutine scope.
      * @param localBuffer The local buffer to add file contents to.
      */
-    private suspend fun processSingleFile(file: VirtualFile, fileProps: FileProperties, relativePath: String, scope: CoroutineScope, localBuffer: MutableList<String>) {
+    private suspend fun processSingleFile(
+        file: VirtualFile,
+        fileProps: FileProperties,
+        relativePath: String,
+        scope: CoroutineScope,
+        parentJob: Job,
+        localBuffer: MutableList<Pair<String, String>>
+    ) {
         // Note: .gitignore and ignoredNames checks are done in processEntry
 
         scope.ensureActive() // Check cancellation
@@ -544,8 +557,8 @@ class SourceExporter(
                 fileContent
             }
 
-            // Add to local buffer - no synchronization needed
-            localBuffer.add(contentToAdd)
+            // Add to local buffer as a (path, content) pair - no synchronization needed
+            localBuffer.add(relativePath to contentToAdd)
 
             val currentFileCount = fileCount.incrementAndGet()
             val currentProcessedCount = processedFileCount.incrementAndGet()
@@ -570,10 +583,10 @@ class SourceExporter(
             limitReachedAfterAdd = true
         }
 
-        // If limit was reached, cancel the coroutine scope
-        if (limitReachedAfterAdd && scope.isActive) {
-            logger.info("Requesting cancellation of processing scope due to file limit.")
-            scope.cancel("File limit reached")
+        // If limit was reached, cancel the shared parent job to stop siblings deterministically
+        if (limitReachedAfterAdd && parentJob.isActive) {
+            logger.info("Requesting cancellation of parent job due to file limit.")
+            parentJob.cancel("File limit reached")
         }
     }
 }

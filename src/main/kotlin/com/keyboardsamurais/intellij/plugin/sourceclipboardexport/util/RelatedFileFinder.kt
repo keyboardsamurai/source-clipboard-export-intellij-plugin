@@ -1,20 +1,25 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util
 
+// Avoid a hard dependency on Kotlin PSI; use optional service instead.
+import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.application.runReadAction
+import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiJavaFile
 import com.intellij.psi.PsiManager
 import com.intellij.psi.search.FilenameIndex
 import com.intellij.psi.search.GlobalSearchScope
-import org.jetbrains.kotlin.psi.KtFile
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.kotlin.KotlinImportResolver
 
 object RelatedFileFinder {
+    private val LOG = Logger.getInstance(RelatedFileFinder::class.java)
 
     object Config {
         private fun listProp(key: String, default: List<String>) =
@@ -324,13 +329,14 @@ object RelatedFileFinder {
     
     private fun extractImportsFromFile(project: Project, psiFile: PsiFile): List<VirtualFile> {
         val imports = mutableSetOf<VirtualFile>()
-        val fileText = psiFile.text
+        // Accessing PSI text must be done under a read action
+        val fileText = ReadAction.compute<String, Exception> { psiFile.text }
         val language = detectLanguage(psiFile.virtualFile)
 
-        // Prefer PSI-level import resolution for Java/Kotlin when possible
+        // Prefer PSI-level import resolution when possible
         when (language) {
             Language.JAVA -> imports.addAll(resolveJavaImportsPsi(project, psiFile))
-            Language.KOTLIN -> imports.addAll(resolveKotlinImportsPsi(project, psiFile))
+            Language.KOTLIN -> imports.addAll(resolveKotlinImportsIfAvailable(project, psiFile))
             else -> {}
         }
         
@@ -397,18 +403,27 @@ object RelatedFileFinder {
         }
     }
 
-    private fun resolveKotlinImportsPsi(project: Project, psiFile: PsiFile): List<VirtualFile> {
-        val kf = psiFile as? KtFile ?: return emptyList()
-        val fqns = runReadAction {
-            kf.importDirectives.mapNotNull { it.importPath?.fqName?.asString() }
-        }
-        val scope = GlobalSearchScope.allScope(project)
-        val facade = JavaPsiFacade.getInstance(project)
-        return fqns.mapNotNull { fqn ->
-            // Ignore star imports
-            if (fqn.endsWith(".*")) return@mapNotNull null
-            val psiClass = runReadAction { facade.findClass(fqn, scope) }
-            psiClass?.containingFile?.virtualFile
+    private fun resolveKotlinImportsIfAvailable(project: Project, psiFile: PsiFile): List<VirtualFile> {
+        return try {
+            // Be defensive: consider historical IDs in case of changes across IDE versions.
+            val kotlinPluginIds = listOf("org.jetbrains.kotlin", "com.intellij.kotlin")
+            val isKotlinEnabled = kotlinPluginIds.any { id ->
+                PluginManagerCore.getPlugin(PluginId.getId(id))?.isEnabled == true
+            }
+            if (!isKotlinEnabled) return emptyList()
+
+            // Service is registered only when Kotlin plugin is present (optional dependency)
+            val resolver = try {
+                // Use service() in a try-catch to avoid exceptions when not registered
+                service<KotlinImportResolver>()
+            } catch (_: Throwable) {
+                null
+            }
+            if (resolver != null) resolver.resolveImports(project, psiFile) else emptyList()
+        } catch (t: Throwable) {
+            // Guard against any unexpected issues; fall back silently
+            LOG.debug("Kotlin PSI resolution unavailable, falling back: ", t)
+            emptyList()
         }
     }
     

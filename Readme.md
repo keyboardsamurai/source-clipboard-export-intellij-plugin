@@ -16,6 +16,7 @@
 - [Why Use This Plugin?](#-why-use-this-plugin)
 - [How is this different from CLI tools like `repomix`?](#-how-is-this-different-from-cli-tools-like-repomix)
 - [✨ Key Features](#-key-features)
+- [📣 What's New in Version 2.1](#-whats-new-in-version-21)
 - [📣 What's New in Version 2.0](#-whats-new-in-version-20)
 - [🧑‍💻 How to Get Started](#-how-to-get-started)
 - [⚙️ Configuration](#️-configuration)
@@ -82,6 +83,20 @@ Instantly grab not just the code you see, but the context that surrounds it. Our
 *   **🧹 Stack Trace Folding:** Intelligently collapse noisy library frames in stack traces to highlight your project's code, simplifying error investigation.
 *   **🌍 Enhanced Multi-Language Support:** Full support for TypeScript, JavaScript, React, and Next.js across all smart actions, with modern framework awareness.
 *   **🛠️ IntelliJ Integrated:** Seamlessly fits into your existing IntelliJ workflow with a native look and feel.
+
+---
+
+### 📣 What's New in Version 2.1?
+
+This release focuses on workflow polish, clarity, and accuracy.
+
+*   **✅ Accurate Diff & History:** Export history now stores the actual files included after `.gitignore`, filter, size, and binary checks. The Diff view shows true added/removed files.
+*   **📚 Deterministic Ordering:** Exports are sorted by relative path, making output easier to scan and diffs cleaner.
+*   **🧩 Clearer Filter Controls:** New “Enable file extension filters” checkbox in Settings, plus a note clarifying that an empty enabled list doesn’t exclude files (all non-binary files considered, within size/ignore limits).
+*   **🔔 Richer Export Notification:** The “Content Copied” notification now includes a concise summary (processed/excluded files, active filters).
+*   **🛠️ Special Filenames:** Better support for files without extensions (Dockerfile/Makefile) for correct filename prefixes and Markdown language hints.
+*   **⚙️ Stability & Consistency:** Unified token estimation in repository summaries. Earlier cancellation when file limits are reached. Streamed sampling for binary detection to avoid heavy reads.
+*   **⌨️ macOS Keymap Reliability:** Added modern `macOS` keymap entries to ensure shortcuts work across IDE keymaps.
 
 ---
 

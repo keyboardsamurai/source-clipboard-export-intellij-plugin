@@ -73,26 +73,26 @@ object DependencyFinder {
         alreadyIncludedFiles: Set<VirtualFile> = emptySet(),
         maxResults: Int = Config.maxResultsPerSearch
     ): Set<VirtualFile> = withContext(Dispatchers.IO) {
-        LOG.warn("Starting hybrid dependency search for ${files.size} files.")
+        LOG.info("Starting hybrid dependency search for ${files.size} files.")
         val startTime = System.currentTimeMillis()
 
         val cacheKey = files.map { it.path }.sorted().joinToString(";")
         if (dependentsCache.containsKey(cacheKey)) {
-            LOG.warn("Returning cached dependents for selection in ${System.currentTimeMillis() - startTime}ms.")
+            LOG.info("Returning cached dependents for selection in ${System.currentTimeMillis() - startTime}ms.")
             return@withContext dependentsCache[cacheKey]!!
         }
 
         // --- Phase 1: Fast Text Search to find Candidate Files ---
         val candidateFiles = findCandidateFilesByText(files, project, alreadyIncludedFiles)
         if (candidateFiles.isEmpty()) {
-            LOG.warn("Phase 1 (Text Search) found no candidate files.")
+            LOG.info("Phase 1 (Text Search) found no candidate files.")
             return@withContext emptySet()
         }
         
         // Filter out files that are already included to avoid unnecessary PSI parsing
         val candidatesToProcess = candidateFiles - alreadyIncludedFiles
         if (candidatesToProcess.isEmpty()) {
-            LOG.warn("All candidate files are already included in export.")
+            LOG.info("All candidate files are already included in export.")
             return@withContext emptySet()
         }
         
@@ -161,7 +161,7 @@ object DependencyFinder {
                     } catch (e: CancellationException) {
                         throw e // Re-throw to allow proper cancellation
                     } catch (e: Exception) {
-                        LOG.warn("Error during PSI search phase for file ${file.name}", e)
+                        LOG.error("Error during PSI search phase for file ${file.name}", e)
                     } finally {
                         semaphore.release()
                     }
@@ -172,7 +172,7 @@ object DependencyFinder {
 
         val result = finalDependents.keys.toSet()
         val totalTime = System.currentTimeMillis() - startTime
-        LOG.warn("Phase 2 (PSI Search) completed. Found ${result.size} verified dependent files. Total time: ${totalTime}ms.")
+        LOG.info("Phase 2 (PSI Search) completed. Found ${result.size} verified dependent files. Total time: ${totalTime}ms.")
 
         dependentsCache[cacheKey] = result
 

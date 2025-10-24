@@ -39,6 +39,7 @@ class SourceClipboardExportConfigurable : Configurable {
     private var filtersTable: JBTable? = null
     private var addFilterTextField: JTextField? = null
     private var ignoredNamesTextArea: JBTextArea? = null
+    private var filtersEnabledCheckBox: JBCheckBox? = null
     private var includePathPrefixCheckBox: JBCheckBox? = null
     private var includeDirectoryStructureCheckBox: JBCheckBox? = null
     private var includeFilesInStructureCheckBox: JBCheckBox? = null
@@ -57,6 +58,8 @@ class SourceClipboardExportConfigurable : Configurable {
         addRepositorySummaryToggle(gbc)
         addOutputFormatDropdown(gbc)
         addFiltersPanel(gbc)
+        addFiltersEnableToggle(gbc)
+        addFiltersNote(gbc)
         addFiltersTable(gbc)
         addIgnoredNamesPanel(gbc)
 
@@ -186,6 +189,22 @@ class SourceClipboardExportConfigurable : Configurable {
         gbc.gridy++
     }
 
+    private fun addFiltersEnableToggle(gbc: GridBagConstraints) {
+        filtersEnabledCheckBox = JBCheckBox("Enable file extension filters")
+        filtersEnabledCheckBox!!.toolTipText = "When enabled, only files matching the filters below are included. If the list is empty, no files are filtered out."
+        settingsPanel!!.add(filtersEnabledCheckBox, gbc)
+        gbc.gridy++
+    }
+
+    private fun addFiltersNote(gbc: GridBagConstraints) {
+        val note = JLabel(
+            "Note: If enabled and the list is empty, no filter is applied — all non-binary files are considered (respecting size and ignore settings)."
+        )
+        note.foreground = UIManager.getColor("Label.disabledForeground") ?: note.foreground
+        settingsPanel!!.add(note, gbc)
+        gbc.gridy++
+    }
+
     private fun addFiltersTable(gbc: GridBagConstraints) {
         gbc.fill = GridBagConstraints.BOTH // Allow table to resize
         gbc.weighty = 0.3 // Give table some vertical space preference
@@ -297,6 +316,7 @@ class SourceClipboardExportConfigurable : Configurable {
                includeFilesInStructureCheckBox!!.isSelected != settings.includeFilesInStructure ||
                includeRepositorySummaryCheckBox!!.isSelected != settings.includeRepositorySummary ||
                includeLineNumbersCheckBox!!.isSelected != settings.includeLineNumbers ||
+               filtersEnabledCheckBox!!.isSelected != settings.areFiltersEnabled ||
                currentFilters != settings.filenameFilters || // Direct list comparison
                currentIgnoredNames != settings.ignoredNames || // Direct list comparison
                currentOutputFormat != settings.outputFormat
@@ -313,6 +333,7 @@ class SourceClipboardExportConfigurable : Configurable {
         settings.includeFilesInStructure = includeFilesInStructureCheckBox!!.isSelected
         settings.includeRepositorySummary = includeRepositorySummaryCheckBox!!.isSelected
         settings.includeLineNumbers = includeLineNumbersCheckBox!!.isSelected
+        settings.areFiltersEnabled = filtersEnabledCheckBox!!.isSelected
 
         // Update output format from dropdown
         val selectedFormatIndex = outputFormatComboBox?.selectedIndex ?: 0
@@ -349,6 +370,7 @@ class SourceClipboardExportConfigurable : Configurable {
         includeFilesInStructureCheckBox!!.isSelected = settings.includeFilesInStructure
         includeRepositorySummaryCheckBox!!.isSelected = settings.includeRepositorySummary
         includeLineNumbersCheckBox!!.isSelected = settings.includeLineNumbers
+        filtersEnabledCheckBox!!.isSelected = settings.areFiltersEnabled
 
         // Set the output format dropdown
         val formatIndex = when (settings.outputFormat) {

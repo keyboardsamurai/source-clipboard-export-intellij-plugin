@@ -146,7 +146,9 @@ object ResourceFinder {
         
         // Extract templateUrl and styleUrls from @Component decorator
         val templateUrlPattern = Regex("""templateUrl\s*:\s*['"]([^'"]+)['"]""")
-        val styleUrlsPattern = Regex("""styleUrls\s*:\s*\[\s*['"]([^'"]+)['"]""")
+        // Capture the entire array content for styleUrls to support multiple entries
+        val styleUrlsBlockPattern = Regex("""styleUrls\s*:\s*\[(.*?)\]""", setOf(RegexOption.DOT_MATCHES_ALL))
+        val quotedPathPattern = Regex("""['"]([^'"]+)['"]""")
         
         val templateMatch = templateUrlPattern.find(psiFile.text)
         if (templateMatch != null) {
@@ -159,14 +161,18 @@ object ResourceFinder {
             }
         }
         
-        val styleMatches = styleUrlsPattern.findAll(psiFile.text)
-        for (match in styleMatches) {
-            val stylePath = match.groupValues[1]
-            val styleFile = ReadAction.compute<VirtualFile?, Exception> {
-                psiFile.virtualFile.parent.findFileByRelativePath(stylePath)
-            }
-            if (styleFile != null && styleFile.isValid) {
-                resources.add(styleFile)
+        // Find the styleUrls array block and then extract all quoted entries
+        val styleBlock = styleUrlsBlockPattern.find(psiFile.text)?.groupValues?.getOrNull(1)
+        if (!styleBlock.isNullOrBlank()) {
+            val entries = quotedPathPattern.findAll(styleBlock)
+            for (m in entries) {
+                val stylePath = m.groupValues[1]
+                val styleFile = ReadAction.compute<VirtualFile?, Exception> {
+                    psiFile.virtualFile.parent.findFileByRelativePath(stylePath)
+                }
+                if (styleFile != null && styleFile.isValid) {
+                    resources.add(styleFile)
+                }
             }
         }
         

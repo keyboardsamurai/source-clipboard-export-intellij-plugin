@@ -72,8 +72,8 @@ class ExportDiffAction : AnAction("Export Diff", "Show differences from last exp
     }
     
     private fun showDiffDialog(
-        project: Project, 
-        lastExport: ExportHistory.ExportEntry, 
+        project: Project,
+        lastExport: ExportHistory.ExportEntry,
         currentResult: SourceExporter.ExportResult,
         selectedFiles: List<VirtualFile>
     ) {
@@ -98,8 +98,9 @@ class ExportDiffDialog(
     private val currentResult: SourceExporter.ExportResult,
     private val selectedFiles: List<VirtualFile>
 ) : DialogWrapper(project) {
-    
-    private val currentPaths = selectedFiles.map { it.path }.toSet()
+
+    // Use actual included paths from the current export (relative to repo root)
+    private val currentPaths = currentResult.includedPaths.toSet()
     private val lastPaths = lastExport.filePaths.toSet()
     
     init {
@@ -267,7 +268,23 @@ class ExportDiffDialog(
             return
         }
         
-        val changedVirtualFiles = selectedFiles.filter { it.path in addedFiles }
+        // Resolve relative paths to VirtualFiles under the repository root
+        val changedVirtualFiles = resolveVirtualFiles(addedFiles)
         SmartExportUtils.exportFiles(project, changedVirtualFiles.toTypedArray())
+    }
+
+    private fun resolveVirtualFiles(paths: Set<String>): List<VirtualFile> {
+        val root = com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.FileUtils.getRepositoryRoot(project)
+        if (root == null) return emptyList()
+        val resolved = mutableListOf<VirtualFile>()
+        for (p in paths) {
+            try {
+                val vf = com.intellij.openapi.vfs.VfsUtil.findRelativeFile(p, root)
+                if (vf != null && vf.isValid) resolved.add(vf)
+            } catch (_: Exception) {
+                // Ignore failures resolving individual files
+            }
+        }
+        return resolved
     }
 }

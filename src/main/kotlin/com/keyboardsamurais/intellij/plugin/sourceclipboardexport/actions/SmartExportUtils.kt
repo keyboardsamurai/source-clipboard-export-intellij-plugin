@@ -89,7 +89,7 @@ object SmartExportUtils {
                     )
 
                     val history = ExportHistory.getInstance(project)
-                    val filePaths = ordered.map { it.path }
+                    val filePaths = result.includedPaths
                     history.addExport(fileCount, sizeInBytes, approxTokens, filePaths)
                 }
             } catch (pce: com.intellij.openapi.progress.ProcessCanceledException) {

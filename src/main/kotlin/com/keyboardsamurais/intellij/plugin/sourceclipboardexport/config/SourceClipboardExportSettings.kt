@@ -26,6 +26,38 @@ class SourceClipboardExportSettings : PersistentStateComponent<SourceClipboardEx
         var includeRepositorySummary: Boolean = false
         var includeLineNumbers: Boolean = true  // Enable by default for better AI context
         var outputFormat: OutputFormat = OutputFormat.PLAIN_TEXT
+
+        // Stack trace folding settings
+        var stackTraceMinFramesToFold: Int = 3
+        // Head/tail context frames to keep visible around a folded block
+        var stackTraceKeepHeadFrames: Int = 1
+        var stackTraceKeepTailFrames: Int = 1
+        // Whether to include package hints in the placeholder line
+        var stackTraceIncludePackageHints: Boolean = true
+        // Whether to treat lines like "... N more" as foldable (default false to preserve canonical elision)
+        var stackTraceTreatEllipsisAsFoldable: Boolean = false
+        // Whether to append the raw, unfurled stack trace for lossless consumption by LLMs
+        var stackTraceAppendRaw: Boolean = true
+        // Customizable fold prefix lists
+        var stackTraceAlwaysFoldPrefixes: MutableList<String> = mutableListOf(
+            "java.", "javax.", "kotlin.", "kotlinx.", "scala.",
+            "jdk.", "sun.", "com.sun.",
+            "org.junit.", "junit.", "org.testng.",
+            "org.mockito.", "net.bytebuddy.",
+            "jakarta.",
+            "reactor.", "io.reactivex.",
+            "io.netty.",
+            "org.apache.", "com.google.", "org.slf4j.", "ch.qos.logback.",
+            "com.intellij.rt.", "org.gradle.", "org.jetbrains.",
+            "worker.org.gradle.process.",
+            "org.hibernate.",
+            "com.zaxxer.hikari.",
+            "org.postgresql."
+        )
+        var stackTraceNeverFoldPrefixes: MutableList<String> = mutableListOf(
+            "org.springframework.test.context.",
+            "com.mycompany.myapp."
+        )
     }
 
     private var myState = State()
