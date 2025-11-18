@@ -149,6 +149,12 @@ Customize the plugin to fit your exact needs. Go to `Settings/Preferences` ➜ `
 
 </details>
 
+### 🧪 Testing & Coverage
+
+- Run the IntelliJ harness tests (includes IDE integration wiring) via `./gradlew test`.
+- Run the plain JVM unit tests via `./gradlew unitTest`—these power JaCoCo coverage.
+- Generate an HTML/XML coverage report with `./gradlew jacocoTestReport`; open `build/reports/jacoco/test/html/index.html` to inspect the results.
+
 ---
 
 ### 📜 Full Changelog

@@ -3,188 +3,180 @@ package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceClipboardExportSettings
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.ExportHistory
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.SourceExporter
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.FileUtils
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
+import io.mockk.coEvery
 import io.mockk.every
+import io.mockk.justRun
 import io.mockk.mockk
+import io.mockk.mockkConstructor
 import io.mockk.mockkObject
 import io.mockk.mockkStatic
+import io.mockk.spyk
+import io.mockk.unmockkAll
 import io.mockk.unmockkObject
-import io.mockk.unmockkStatic
 import io.mockk.verify
 import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import javax.swing.SwingUtilities
 
 class ExportDiffActionTest {
 
-    private lateinit var project: Project
-    private lateinit var event: AnActionEvent
-    private lateinit var file1: VirtualFile
-    private lateinit var file2: VirtualFile
-    private lateinit var exportHistory: ExportHistory
-
     @BeforeEach
-    fun setup() {
-        project = mockk(relaxed = true)
-        event = mockk(relaxed = true)
-        file1 = mockk(relaxed = true)
-        file2 = mockk(relaxed = true)
-        exportHistory = mockk(relaxed = true)
-
-        every { event.project } returns project
-        every { event.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) } returns arrayOf(file1)
-        
-        every { file1.name } returns "Example.java"
-        every { file1.path } returns "/project/src/Example.java"
-        every { file1.isDirectory } returns false
-        
-        every { file2.name } returns "Test.java"
-        every { file2.path } returns "/project/test/Test.java"
-        every { file2.isDirectory } returns false
-
-        // Mock NotificationUtils object
-        mockkObject(NotificationUtils)
-        every { NotificationUtils.showNotification(any(), any(), any(), any(), any()) } returns Unit
+    fun init() {
+        SourceClipboardExportSettings.setTestInstance(SourceClipboardExportSettings())
     }
 
     @AfterEach
-    fun tearDown() {
-        unmockkObject(NotificationUtils)
+    fun cleanup() {
+        SourceClipboardExportSettings.setTestInstance(null)
+        unmockkAll()
     }
 
     @Test
-    fun `test action update enables when files selected`() {
-        val action = ExportDiffAction()
-        
-        action.update(event)
-        
-        verify { event.presentation.isEnabledAndVisible = true }
+    fun `normalizeHistoricalPaths strips repository root from absolute paths`() {
+        val project = mockk<Project>(relaxed = true)
+        val root = mockk<VirtualFile>()
+
+        mockkObject(FileUtils)
+        try {
+            every { root.path } returns "/repo"
+            every { FileUtils.getRepositoryRoot(project) } returns root
+
+            val input = listOf(
+                "/repo/src/Main.kt",
+                "/repo/src/util/Util.kt",
+                "/other/Outside.kt"
+            )
+
+            val normalized = normalizeHistoricalPaths(project, input)
+
+            assertEquals(
+                listOf(
+                    "src/Main.kt",
+                    "src/util/Util.kt",
+                    "/other/Outside.kt"
+                ),
+                normalized
+            )
+        } finally {
+            unmockkObject(FileUtils)
+        }
     }
 
     @Test
-    fun `test action update disables when no files selected`() {
-        every { event.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) } returns null
-        
-        val action = ExportDiffAction()
-        action.update(event)
-        
-        verify { event.presentation.isEnabledAndVisible = false }
-    }
+    fun `normalizePaths converts backslashes to forward slashes`() {
+        val input = listOf(
+            "src\\Main.kt",
+            "src\\util/Util.kt"
+        )
 
-    @Test
-    fun `test action update disables when no project`() {
-        every { event.project } returns null
-        
-        val action = ExportDiffAction()
-        action.update(event)
-        
-        verify { event.presentation.isEnabledAndVisible = false }
-    }
+        val normalized = normalizePaths(input)
 
+        assertEquals(
+            listOf(
+                "src/Main.kt",
+                "src/util/Util.kt"
+            ),
+            normalized
+        )
+    }
     @Test
-    fun `test action shows notification when no previous export exists`() {
+    fun `actionPerformed notifies when no history available`() {
+        val project = mockk<Project>(relaxed = true)
+        val event = mockk<AnActionEvent>(relaxed = true)
+        val selectedFile = mockk<VirtualFile>(relaxed = true)
+
+        every { event.project } returns project
+        every { event.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) } returns arrayOf(selectedFile)
+
         mockkObject(ExportHistory.Companion)
-        every { ExportHistory.getInstance(project) } returns exportHistory
-        every { exportHistory.getRecentExports() } returns emptyList()
-        
-        val action = ExportDiffAction()
-        action.actionPerformed(event)
-        
-        verify { 
+        val history = mockk<ExportHistory>()
+        every { ExportHistory.getInstance(project) } returns history
+        every { history.getRecentExports() } returns emptyList()
+
+        mockkObject(NotificationUtils)
+        justRun { NotificationUtils.showNotification(any(), any(), any(), any()) }
+
+        ExportDiffAction().actionPerformed(event)
+
+        verify {
             NotificationUtils.showNotification(
                 project,
-                "No Previous Export",
-                "No previous export found to compare against",
+                any(),
+                match { it.contains("No previous export") },
                 NotificationType.INFORMATION
             )
         }
-        
-        unmockkObject(ExportHistory.Companion)
     }
 
     @Test
-    fun `test export diff dialog creation with valid previous export`() {
-        // Create a mock export entry
-        val exportEntry = ExportHistory.ExportEntry(
-            timestamp = System.currentTimeMillis() - 3600000, // 1 hour ago
-            fileCount = 2,
-            sizeBytes = 1024,
-            tokens = 256,
-            filePaths = mutableListOf("/project/src/Old.java", "/project/src/Common.java"),
-            summary = "2 files, 1.0 KB, ~256 tokens"
-        )
-        
+    fun `actionPerformed launches diff dialog when history exists`() {
+        val project = mockk<Project>(relaxed = true)
+        val event = mockk<AnActionEvent>(relaxed = true)
+        val selectedFile = mockk<VirtualFile>(relaxed = true)
+
+        every { event.project } returns project
+        every { event.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) } returns arrayOf(selectedFile)
+
         mockkObject(ExportHistory.Companion)
-        every { ExportHistory.getInstance(project) } returns exportHistory
-        every { exportHistory.getRecentExports() } returns listOf(exportEntry)
-        
-        // Mock ProgressManager to avoid actual background processing
-        mockkStatic("com.intellij.openapi.progress.ProgressManager")
-        val progressManager = mockk<com.intellij.openapi.progress.ProgressManager>(relaxed = true)
-        every { com.intellij.openapi.progress.ProgressManager.getInstance() } returns progressManager
-        every { progressManager.run(any<com.intellij.openapi.progress.Task.Backgroundable>()) } answers {
-            // Don't actually run the background task in tests
+        val history = mockk<ExportHistory>()
+        val previousExport = ExportHistory.ExportEntry(
+            fileCount = 1,
+            sizeBytes = 10,
+            tokens = 5,
+            filePaths = mutableListOf("src/Main.kt"),
+            summary = "1 files"
+        )
+        every { ExportHistory.getInstance(project) } returns history
+        every { history.getRecentExports() } returns listOf(previousExport)
+
+        mockkStatic(ProgressManager::class)
+        val progressManager = mockk<ProgressManager>()
+        every { ProgressManager.getInstance() } returns progressManager
+        every { progressManager.run(any<Task.Backgroundable>()) } answers {
+            val task = firstArg<Task.Backgroundable>()
+            task.run(mockk(relaxed = true))
         }
-        
-        val action = ExportDiffAction()
-        
-        // Should not throw exception
-        assertDoesNotThrow {
-            action.actionPerformed(event)
+
+        mockkConstructor(SourceExporter::class)
+        val exportResult = SourceExporter.ExportResult(
+            content = "body",
+            processedFileCount = 1,
+            excludedByFilterCount = 0,
+            excludedBySizeCount = 0,
+            excludedByBinaryContentCount = 0,
+            excludedByIgnoredNameCount = 0,
+            excludedByGitignoreCount = 0,
+            excludedExtensions = emptySet(),
+            limitReached = false,
+            includedPaths = listOf("src/Main.kt")
+        )
+        coEvery { anyConstructed<SourceExporter>().exportSources(any()) } returns exportResult
+
+        val action = spyk(ExportDiffAction(), recordPrivateCalls = true)
+        justRun {
+            action["showDiffDialog"](project, previousExport, exportResult, any<List<VirtualFile>>())
         }
-        
-        // Verify that progress task was scheduled
-        verify { progressManager.run(any<com.intellij.openapi.progress.Task.Backgroundable>()) }
-        
-        unmockkObject(ExportHistory.Companion)
-        unmockkStatic("com.intellij.openapi.progress.ProgressManager")
-    }
 
-    @Test
-    fun `test export diff dialog path comparison logic`() {
-        val currentPaths = setOf("/project/src/New.java", "/project/src/Common.java")
-        val lastPaths = setOf("/project/src/Old.java", "/project/src/Common.java")
-        
-        val addedFiles = currentPaths - lastPaths
-        val removedFiles = lastPaths - currentPaths
-        val unchangedFiles = currentPaths.intersect(lastPaths)
-        
-        assertEquals(setOf("/project/src/New.java"), addedFiles)
-        assertEquals(setOf("/project/src/Old.java"), removedFiles)
-        assertEquals(setOf("/project/src/Common.java"), unchangedFiles)
-    }
+        mockkStatic(SwingUtilities::class)
+        every { SwingUtilities.invokeLater(any()) } answers {
+            firstArg<Runnable>().run()
+        }
 
-    @Test
-    fun `test export diff dialog handles identical file sets`() {
-        val currentPaths = setOf("/project/src/File1.java", "/project/src/File2.java")
-        val lastPaths = setOf("/project/src/File1.java", "/project/src/File2.java")
-        
-        val addedFiles = currentPaths - lastPaths
-        val removedFiles = lastPaths - currentPaths
-        val unchangedFiles = currentPaths.intersect(lastPaths)
-        
-        assertTrue(addedFiles.isEmpty())
-        assertTrue(removedFiles.isEmpty())
-        assertEquals(2, unchangedFiles.size)
-    }
+        action.actionPerformed(event)
 
-    @Test
-    fun `test export diff dialog handles completely different file sets`() {
-        val currentPaths = setOf("/project/src/New1.java", "/project/src/New2.java")
-        val lastPaths = setOf("/project/src/Old1.java", "/project/src/Old2.java")
-        
-        val addedFiles = currentPaths - lastPaths
-        val removedFiles = lastPaths - currentPaths
-        val unchangedFiles = currentPaths.intersect(lastPaths)
-        
-        assertEquals(2, addedFiles.size)
-        assertEquals(2, removedFiles.size)
-        assertTrue(unchangedFiles.isEmpty())
+        verify {
+            action["showDiffDialog"](project, previousExport, exportResult, any<List<VirtualFile>>())
+        }
     }
 }

@@ -18,6 +18,7 @@ class SourceClipboardExportSettings : PersistentStateComponent<SourceClipboardEx
         var fileCount: Int = 200
         var filenameFilters: MutableList<String> = mutableListOf()
         var areFiltersEnabled: Boolean = false  // Disable by default when filter list is empty
+        var hasMigratedFilterFlag: Boolean = false
         var maxFileSizeKb: Int = 500
         var ignoredNames: MutableList<String> = AppConstants.DEFAULT_IGNORED_NAMES.toMutableList()
         var includePathPrefix: Boolean = true
@@ -65,6 +66,16 @@ class SourceClipboardExportSettings : PersistentStateComponent<SourceClipboardEx
     override fun getState(): State = myState
 
     override fun loadState(state: State) {
+        // Backward-compatible migration: if a user already has filename filters configured
+        // from a previous version (when filters were always applied), enable filters so
+        // their existing behavior is preserved. This migration runs only once.
+        if (!state.hasMigratedFilterFlag) {
+            if (state.filenameFilters.isNotEmpty() && !state.areFiltersEnabled) {
+                state.areFiltersEnabled = true
+            }
+            state.hasMigratedFilterFlag = true
+        }
+
         if (state.ignoredNames.isNullOrEmpty()) {
             state.ignoredNames = AppConstants.DEFAULT_IGNORED_NAMES.toMutableList()
         }

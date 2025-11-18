@@ -19,6 +19,7 @@ import com.intellij.ui.components.JBScrollPane
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceClipboardExportSettings
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.ExportHistory
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.SourceExporter
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.FileUtils
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.StringUtils
 import kotlinx.coroutines.runBlocking
@@ -99,9 +100,10 @@ class ExportDiffDialog(
     private val selectedFiles: List<VirtualFile>
 ) : DialogWrapper(project) {
 
-    // Use actual included paths from the current export (relative to repo root)
-    private val currentPaths = currentResult.includedPaths.toSet()
-    private val lastPaths = lastExport.filePaths.toSet()
+    // Normalize paths so that legacy absolute paths in history entries are compared
+    // consistently with current relative paths from the exporter.
+    internal val currentPaths = normalizePaths(currentResult.includedPaths).toSet()
+    internal val lastPaths = normalizeHistoricalPaths(project, lastExport.filePaths).toSet()
     
     init {
         title = "Export Diff View"
@@ -286,5 +288,25 @@ class ExportDiffDialog(
             }
         }
         return resolved
+    }
+}
+
+internal fun normalizePaths(paths: List<String>): List<String> {
+    return paths.map { it.replace('\\', '/') }
+}
+
+internal fun normalizeHistoricalPaths(project: Project, paths: List<String>): List<String> {
+    val root = FileUtils.getRepositoryRoot(project) ?: return normalizePaths(paths)
+    val rootPath = root.path.replace('\\', '/').trimEnd('/')
+
+    return paths.map { path ->
+        val normalizedPath = path.replace('\\', '/')
+        if (normalizedPath.startsWith("$rootPath/")) {
+            normalizedPath.removePrefix("$rootPath/")
+        } else if (normalizedPath == rootPath) {
+            ""
+        } else {
+            normalizedPath
+        }
     }
 }

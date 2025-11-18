@@ -2,10 +2,19 @@ plugins {
     id("java")
     id("org.jetbrains.kotlin.jvm") version "1.9.24"
     id("org.jetbrains.intellij.platform") version "2.6.0"
+    id("jacoco")
 }
 
 group = "com.keyboardsamurais.intellij.plugin"
 version = "2.1"
+
+val jacocoExtension = extensions.getByType(JacocoPluginExtension::class.java).apply {
+    toolVersion = "0.8.12"
+}
+
+val sourceSets = extensions.getByType(SourceSetContainer::class.java)
+val mainSourceSet = sourceSets.named("main").get()
+val testSourceSet = sourceSets.named("test").get()
 
 repositories {
     mavenCentral()
@@ -80,25 +89,56 @@ tasks {
         kotlinOptions.jvmTarget = "21"
     }
 
-    // Configure test task to use JUnit 5
-    test {
+    fun Test.applyCommonTestConfig() {
         useJUnitPlatform()
         testLogging {
             events("passed", "skipped", "failed")
         }
-
-        // Increase heap size to avoid OutOfMemoryError
         jvmArgs("-Xmx2g", "-XX:+EnableDynamicAgentLoading")
+        systemProperty(
+            "java.util.logging.config.file",
+            "${project.projectDir}/src/test/resources/logging.properties"
+        )
+    }
 
-        // Point to our custom logging.properties file
-        systemProperty("java.util.logging.config.file", "${project.projectDir}/src/test/resources/logging.properties")
+    // Configure IntelliJ harness tests
+    val intellijHarnessTest = named<Test>("test") {
+        applyCommonTestConfig()
+    }
+
+    // Ensure Jacoco agent is attached to every Gradle Test task (the IntelliJ harness runs in a separate JVM).
+    withType<Test>().configureEach {
+        if (extensions.findByName("jacoco") == null) {
+            jacocoExtension.applyTo(this)
+        }
+        extensions.configure(JacocoTaskExtension::class.java) {
+            isEnabled = true
+            destinationFile = layout.buildDirectory.file("jacoco/${name}.exec").get().asFile
+            isIncludeNoLocationClasses = true
+            excludes = listOf("jdk.internal.*")
+        }
+    }
+
+    withType<JacocoReport>().configureEach {
+        reports {
+            html.required.set(true)
+            xml.required.set(true)
+            csv.required.set(false)
+        }
+    }
+
+    named<JacocoReport>("jacocoTestReport") {
+        dependsOn(intellijHarnessTest)
+        executionData.setFrom(file("$buildDir/jacoco/test.exec"))
+        classDirectories.setFrom(files(mainSourceSet.output))
+        sourceDirectories.setFrom(files(mainSourceSet.allSource.srcDirs))
     }
 
     // Task to run all tests
     register("runAllTests") {
         description = "Runs all tests in the project"
         group = "verification"
-        dependsOn(test)
+        dependsOn(intellijHarnessTest)
 
         doLast {
             println("All tests have been executed.")
