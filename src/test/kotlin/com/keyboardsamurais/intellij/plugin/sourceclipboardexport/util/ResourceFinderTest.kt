@@ -110,6 +110,41 @@ class ResourceFinderTest {
         assertEquals(setOf(styleFile, jsonFile), resources)
     }
 
+    @Test
+    fun `findRelatedResources resolves angular templates and styles`() = runBlocking {
+        val tsFile = mockSourceFile("ts")
+        val psiFile = mockPsiFile(
+            """
+            @Component({
+                templateUrl: 'Widget.html',
+                styleUrls: ['Widget.css', './Widget.theme.css']
+            })
+            export class WidgetComponent {}
+            """.trimIndent(),
+            tsFile,
+            languageId = "TypeScript"
+        )
+
+        val parentFolder = mockk<VirtualFile>(relaxed = true)
+        every { tsFile.parent } returns parentFolder
+
+        val template = mockk<VirtualFile>(relaxed = true)
+        val style1 = mockk<VirtualFile>(relaxed = true)
+        val style2 = mockk<VirtualFile>(relaxed = true)
+        every { template.isValid } returns true
+        every { style1.isValid } returns true
+        every { style2.isValid } returns true
+        every { parentFolder.findFileByRelativePath("Widget.html") } returns template
+        every { parentFolder.findFileByRelativePath("Widget.css") } returns style1
+        every { parentFolder.findFileByRelativePath("./Widget.theme.css") } returns style2
+
+        every { psiManager.findFile(tsFile) } returns psiFile
+
+        val resources = ResourceFinder.findRelatedResources(arrayOf(tsFile), project)
+
+        assertEquals(setOf(template, style1, style2), resources)
+    }
+
     private fun mockSourceFile(extension: String): VirtualFile {
         val file = mockk<VirtualFile>(relaxed = true)
         every { file.isDirectory } returns false

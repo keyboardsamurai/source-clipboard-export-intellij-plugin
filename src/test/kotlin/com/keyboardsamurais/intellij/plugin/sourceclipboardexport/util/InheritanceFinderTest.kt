@@ -1,6 +1,10 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util
 
+import com.intellij.openapi.vfs.VirtualFile
+import io.mockk.every
+import io.mockk.mockk
 import org.junit.jupiter.api.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -67,5 +71,21 @@ class InheritanceFinderTest {
         @Suppress("UNCHECKED_CAST")
         val enumValue = java.lang.Enum.valueOf(elementTypeClass as Class<out Enum<*>>, type)
         return ctor.newInstance(name, enumValue)
+    }
+
+    @Test
+    fun `detectLanguage infers from extension`() {
+        val method = InheritanceFinder::class.java.getDeclaredMethod(
+            "detectLanguage",
+            VirtualFile::class.java
+        ).apply { isAccessible = true }
+
+        val javaFile = mockk<VirtualFile>()
+        every { javaFile.extension } returns "java"
+        val tsxFile = mockk<VirtualFile>()
+        every { tsxFile.extension } returns "tsx"
+
+        assertEquals("JAVA", method.invoke(InheritanceFinder, javaFile).toString())
+        assertEquals("TSX", method.invoke(InheritanceFinder, tsxFile).toString())
     }
 }

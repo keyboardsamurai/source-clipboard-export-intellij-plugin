@@ -2,12 +2,17 @@ package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util
 
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiFile
+import com.intellij.psi.PsiNameIdentifierOwner
+import com.intellij.psi.PsiRecursiveElementVisitor
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.unmockkAll
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.util.concurrent.ConcurrentHashMap
@@ -65,5 +70,30 @@ class DependencyFinderTest {
     @Test
     fun `validateConfiguration completes for large selections`() {
         DependencyFinder.validateConfiguration(mockk(relaxed = true), selectedFilesCount = 20)
+    }
+
+    @Test
+    fun `findReferenceableElementsOptimized collects top level identifiers`() {
+        val method = DependencyFinder::class.java.getDeclaredMethod(
+            "findReferenceableElementsOptimized",
+            PsiFile::class.java
+        ).apply { isAccessible = true }
+
+        val topLevel = mockk<PsiNameIdentifierOwner>(relaxed = true)
+        every { topLevel.name } returns "Foo"
+        val nested = mockk<PsiNameIdentifierOwner>(relaxed = true)
+        every { nested.name } returns "Bar"
+
+        val psiFile = mockk<PsiFile>(relaxed = true)
+        every { psiFile.children } returns arrayOf<PsiElement>(topLevel)
+        every { psiFile.accept(any()) } answers {
+            val visitor = firstArg<PsiRecursiveElementVisitor>()
+            visitor.visitElement(nested)
+        }
+
+        val result = method.invoke(DependencyFinder, psiFile) as List<*>
+        assertTrue(result.contains(topLevel))
+        assertTrue(result.contains(nested))
+        assertTrue(result.contains(psiFile))
     }
 }
