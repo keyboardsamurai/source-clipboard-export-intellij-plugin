@@ -74,6 +74,13 @@ class ExportAllTestsAction : AnAction() {
                         project,
                         allFiles.toTypedArray()
                     )
+                    
+                    NotificationUtils.showNotification(
+                        project,
+                        "All Tests Exported",
+                        description,
+                        com.intellij.notification.NotificationType.INFORMATION
+                    )
                 } catch (e: Exception) {
                     NotificationUtils.showNotification(
                         project, 

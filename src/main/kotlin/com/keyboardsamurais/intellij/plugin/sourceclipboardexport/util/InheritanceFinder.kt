@@ -97,11 +97,11 @@ object InheritanceFinder {
                 val inheritors = ClassInheritorsSearch.search(base, projectScope, true)
                 var countPsi = 0
 
-                inheritors.forEach { inheritor ->
+                inheritors.forEach inheritorLoop@ { inheritor ->
                     val inheritorFile = inheritor.containingFile?.virtualFile
                     if (inheritorFile != null && inheritorFile.isValid) {
-                        if (!includeAnonymous && inheritor.name == null) return@forEach
-                        if (!includeTest && isTestFile(inheritorFile)) return@forEach
+                        if (!includeAnonymous && inheritor.name == null) return@inheritorLoop
+                        if (!includeTest && isTestFile(inheritorFile)) return@inheritorLoop
                         implementations.add(inheritorFile)
                         countPsi++
                     }
@@ -111,9 +111,9 @@ object InheritanceFinder {
                 // Kotlin-aware fallback using stub index
                 val ktFiles = findKotlinInheritorsByIndex(base, project, projectScope)
                 trace("SCE[Finder]: base=${base.qualifiedName ?: base.name} Kotlin-index hits=${ktFiles.size}")
-                ktFiles.forEach { vf ->
+                ktFiles.forEach ktLoop@ { vf ->
                     if (vf.isValid) {
-                        if (!includeTest && isTestFile(vf)) return@forEach
+                        if (!includeTest && isTestFile(vf)) return@ktLoop
                         implementations.add(vf)
                     }
                 }
@@ -140,17 +140,17 @@ object InheritanceFinder {
             val inheritors = ClassInheritorsSearch.search(psiClass, projectScope, true)
             var countPsi = 0
             
-            inheritors.forEach { inheritor ->
+            inheritors.forEach javaInheritorLoop@ { inheritor ->
                 val inheritorFile = inheritor.containingFile?.virtualFile
                 
                 if (inheritorFile != null && inheritorFile.isValid && inheritorFile != psiFile.virtualFile) {
                     // Check filters
                     if (!includeAnonymous && inheritor.name == null) {
-                        return@forEach
+                        return@javaInheritorLoop
                     }
                     
                     if (!includeTest && isTestFile(inheritorFile)) {
-                        return@forEach
+                        return@javaInheritorLoop
                     }
                     
                     implementations.add(inheritorFile)
@@ -184,7 +184,6 @@ object InheritanceFinder {
         if (inheritableElements.isEmpty()) return
         
         // Search for implementations across TypeScript/JavaScript files
-        val projectScope = GlobalSearchScope.projectScope(project)
         
         runReadAction {
             val projectFileIndex = com.intellij.openapi.roots.ProjectFileIndex.getInstance(project)
@@ -297,6 +296,7 @@ object InheritanceFinder {
                 val ktClassOrObjectClass = Class.forName("org.jetbrains.kotlin.psi.KtClassOrObject")
 
                 // Collect all KtClassOrObject elements
+                @Suppress("UNCHECKED_CAST")
                 val ktElements: Collection<PsiElement> = PsiTreeUtil.collectElementsOfType(psiFile, ktClassOrObjectClass as Class<PsiElement>)
                 trace("SCE[Finder]: Kotlin KtClassOrObject count=${ktElements.size}")
 

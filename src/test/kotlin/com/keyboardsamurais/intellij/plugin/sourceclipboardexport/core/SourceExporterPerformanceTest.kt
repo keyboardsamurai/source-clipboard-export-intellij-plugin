@@ -25,16 +25,17 @@ class SourceExporterPerformanceTest {
         // Mock the gitignore parser to not exclude any files
         mockkConstructor(HierarchicalGitignoreParser::class)
         every { anyConstructed<HierarchicalGitignoreParser>().isIgnored(any()) } returns false
-        
+
         // Mock ReadAction to execute computables directly
         mockkStatic(ReadAction::class)
-        every { ReadAction.compute<Any?, Exception>(any()) } answers {
-            // The argument is a lambda function, execute it directly
-            val lambda = firstArg<() -> Any?>()
-            lambda()
-        }
+        every { ReadAction.compute<Any?, Exception>(any()) } answers
+                {
+                    // The argument is a lambda function, execute it directly
+                    val lambda = firstArg<() -> Any?>()
+                    lambda()
+                }
     }
-    
+
     @AfterEach
     fun tearDown() {
         unmockkAll()
@@ -46,11 +47,14 @@ class SourceExporterPerformanceTest {
         // We can't directly test the dispatcher, but we can verify the behavior is reasonable
 
         val project = mockk<Project>(relaxed = true)
+        every { project.getService(HierarchicalGitignoreParser::class.java) } returns
+                mockk(relaxed = true)
         val indicator = mockk<ProgressIndicator>(relaxed = true)
-        val settings = SourceClipboardExportSettings.State().apply {
-            fileCount = 10
-            maxFileSizeKb = 100
-        }
+        val settings =
+                SourceClipboardExportSettings.State().apply {
+                    fileCount = 10
+                    maxFileSizeKb = 100
+                }
 
         val exporter = SourceExporter(project, settings, indicator)
 
@@ -64,33 +68,37 @@ class SourceExporterPerformanceTest {
     @Disabled("Complex integration test requiring full IntelliJ test environment")
     fun `test early termination when file limit is reached`() = runBlocking {
         val project = mockk<Project>(relaxed = true)
+        every { project.getService(HierarchicalGitignoreParser::class.java) } returns
+                mockk(relaxed = true)
         val indicator = mockk<ProgressIndicator>(relaxed = true)
-        val settings = SourceClipboardExportSettings.State().apply {
-            fileCount = 3 // Low limit to test early termination
-            maxFileSizeKb = 100
-            areFiltersEnabled = false
-            ignoredNames = mutableListOf()
-            filenameFilters = mutableListOf()
-        }
+        val settings =
+                SourceClipboardExportSettings.State().apply {
+                    fileCount = 3 // Low limit to test early termination
+                    maxFileSizeKb = 100
+                    areFiltersEnabled = false
+                    ignoredNames = mutableListOf()
+                    filenameFilters = mutableListOf()
+                }
 
         // Create root directory
         val rootDir = mockk<VirtualFile>(relaxed = true)
-        
+
         // Create mock files
-        val files = (1..10).map { index ->
-            mockk<VirtualFile> {
-                every { name } returns "file$index.txt"
-                every { path } returns "/project/file$index.txt"
-                every { isDirectory } returns false
-                every { extension } returns "txt"
-                every { length } returns 100L
-                every { isValid } returns true
-                every { exists() } returns true
-                every { charset } returns Charsets.UTF_8
-                every { contentsToByteArray() } returns "File $index content".toByteArray()
-                every { parent } returns rootDir
-            }
-        }
+        val files =
+                (1..10).map { index ->
+                    mockk<VirtualFile> {
+                        every { name } returns "file$index.txt"
+                        every { path } returns "/project/file$index.txt"
+                        every { isDirectory } returns false
+                        every { extension } returns "txt"
+                        every { length } returns 100L
+                        every { isValid } returns true
+                        every { exists() } returns true
+                        every { charset } returns Charsets.UTF_8
+                        every { contentsToByteArray() } returns "File $index content".toByteArray()
+                        every { parent } returns rootDir
+                    }
+                }
 
         // Configure root directory
         every { rootDir.name } returns "project"
@@ -110,16 +118,22 @@ class SourceExporterPerformanceTest {
         println("Limit reached: ${result.limitReached}")
         println("Content length: ${result.content.length}")
         println("Content preview: ${result.content.take(200)}")
-        
+
         // Should process at least one file
         assertTrue(result.processedFileCount > 0, "Should process at least one file")
-        
+
         // Should only process up to the file limit
-        assertTrue(result.processedFileCount <= 3, "Should not exceed file limit (got ${result.processedFileCount})")
-        
+        assertTrue(
+                result.processedFileCount <= 3,
+                "Should not exceed file limit (got ${result.processedFileCount})"
+        )
+
         // If we processed 3 or more files, limit should be reached
         if (result.processedFileCount >= 3) {
-            assertTrue(result.limitReached, "Should indicate limit was reached when processed ${result.processedFileCount} files")
+            assertTrue(
+                    result.limitReached,
+                    "Should indicate limit was reached when processed ${result.processedFileCount} files"
+            )
         }
     }
 
@@ -127,33 +141,37 @@ class SourceExporterPerformanceTest {
     @Disabled("Complex integration test requiring full IntelliJ test environment")
     fun `test concurrent processing efficiency`() = runBlocking {
         val project = mockk<Project>(relaxed = true)
+        every { project.getService(HierarchicalGitignoreParser::class.java) } returns
+                mockk(relaxed = true)
         val indicator = mockk<ProgressIndicator>(relaxed = true)
-        val settings = SourceClipboardExportSettings.State().apply {
-            fileCount = 50
-            maxFileSizeKb = 100
-            areFiltersEnabled = false
-            ignoredNames = mutableListOf()
-            filenameFilters = mutableListOf()
-        }
+        val settings =
+                SourceClipboardExportSettings.State().apply {
+                    fileCount = 50
+                    maxFileSizeKb = 100
+                    areFiltersEnabled = false
+                    ignoredNames = mutableListOf()
+                    filenameFilters = mutableListOf()
+                }
 
         // Create root directory
         val rootDir = mockk<VirtualFile>(relaxed = true)
-        
+
         // Create many mock files to test concurrent processing
-        val files = (1..50).map { index ->
-            mockk<VirtualFile> {
-                every { name } returns "file$index.txt"
-                every { path } returns "/project/file$index.txt"
-                every { isDirectory } returns false
-                every { extension } returns "txt"
-                every { length } returns 100L
-                every { isValid } returns true
-                every { exists() } returns true
-                every { charset } returns Charsets.UTF_8
-                every { contentsToByteArray() } returns "File $index content".toByteArray()
-                every { parent } returns rootDir
-            }
-        }
+        val files =
+                (1..50).map { index ->
+                    mockk<VirtualFile> {
+                        every { name } returns "file$index.txt"
+                        every { path } returns "/project/file$index.txt"
+                        every { isDirectory } returns false
+                        every { extension } returns "txt"
+                        every { length } returns 100L
+                        every { isValid } returns true
+                        every { exists() } returns true
+                        every { charset } returns Charsets.UTF_8
+                        every { contentsToByteArray() } returns "File $index content".toByteArray()
+                        every { parent } returns rootDir
+                    }
+                }
 
         // Configure root directory
         every { rootDir.name } returns "project"
@@ -175,14 +193,20 @@ class SourceExporterPerformanceTest {
         println("Processed file count: ${result.processedFileCount}")
         println("Processing duration: $duration ms")
         println("Content length: ${result.content.length}")
-        
+
         // Should process at least one file
-        assertTrue(result.processedFileCount > 0, "Should process at least one file (got ${result.processedFileCount})")
-        
-        // Should process many files efficiently  
+        assertTrue(
+                result.processedFileCount > 0,
+                "Should process at least one file (got ${result.processedFileCount})"
+        )
+
+        // Should process many files efficiently
         assertTrue(result.processedFileCount <= 50, "Should not exceed the total number of files")
 
         // Processing should be reasonably fast (less than 20 seconds for 50 small files)
-        assertTrue(duration < 20000, "Processing 50 files should take less than 20 seconds, took $duration ms")
+        assertTrue(
+                duration < 20000,
+                "Processing 50 files should take less than 20 seconds, took $duration ms"
+        )
     }
 }

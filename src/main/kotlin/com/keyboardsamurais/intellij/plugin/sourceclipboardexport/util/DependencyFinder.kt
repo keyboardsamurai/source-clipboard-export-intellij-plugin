@@ -331,7 +331,7 @@ object DependencyFinder {
     /**
      * Warn if configuration might cause performance issues
      */
-    fun validateConfiguration(project: Project, selectedFilesCount: Int) {
+    fun validateConfiguration(selectedFilesCount: Int) {
         if (selectedFilesCount > 10 && Config.maxConcurrentPsiSearches > 2) {
             LOG.warn("WARNING: High concurrency (${Config.maxConcurrentPsiSearches}) with many files ($selectedFilesCount) may cause IDE freezing")
         }

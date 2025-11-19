@@ -90,7 +90,7 @@ class RelatedFileFinderTest {
         every { parent.findChild("Widget.sass") } returns null
         every { parent.findChild("Widget.module.css") } returns styleFile
 
-        val result = RelatedFileFinder.findCurrentPackageFiles(project, jsxFile)
+        val result = RelatedFileFinder.findCurrentPackageFiles(jsxFile)
 
         assertTrue(result.contains(indexFile))
         assertTrue(result.contains(styleFile))

@@ -157,7 +157,6 @@ object ExtendedTestFinder {
     
     private fun isTestFile(file: VirtualFile): Boolean {
         val name = file.nameWithoutExtension
-        val path = file.path
         
         // Check if in test directory
         if (isInTestDirectory(file)) return true

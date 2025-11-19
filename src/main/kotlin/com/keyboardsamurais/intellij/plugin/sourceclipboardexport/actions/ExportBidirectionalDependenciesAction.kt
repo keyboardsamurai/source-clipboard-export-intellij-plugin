@@ -56,7 +56,7 @@ class ExportBidirectionalDependenciesAction : AnAction() {
                     allFiles.addAll(selectedFiles)
                     
                     // Validate configuration for performance
-                    DependencyFinder.validateConfiguration(project, selectedFiles.size)
+                    DependencyFinder.validateConfiguration(selectedFiles.size)
                     
                     // Phase 1: Find reverse dependencies (what uses these files)
                     indicator.text = "Finding reverse dependencies..."

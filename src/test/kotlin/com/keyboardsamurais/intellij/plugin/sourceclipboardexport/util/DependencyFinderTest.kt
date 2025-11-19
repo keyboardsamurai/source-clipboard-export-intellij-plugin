@@ -69,7 +69,7 @@ class DependencyFinderTest {
 
     @Test
     fun `validateConfiguration completes for large selections`() {
-        DependencyFinder.validateConfiguration(mockk(relaxed = true), selectedFilesCount = 20)
+        DependencyFinder.validateConfiguration(selectedFilesCount = 20)
     }
 
     @Test

@@ -1,6 +1,5 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions
 
-import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -19,8 +18,8 @@ import com.intellij.ui.components.JBScrollPane
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceClipboardExportSettings
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.ExportHistory
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.SourceExporter
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.ui.ExportNotificationPresenter
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.FileUtils
-import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.StringUtils
 import kotlinx.coroutines.runBlocking
 import java.awt.BorderLayout
@@ -36,238 +35,236 @@ import javax.swing.SwingUtilities
 import javax.swing.UIManager
 
 class ExportDiffAction : AnAction("Export Diff", "Show differences from last export", null) {
-    
+
     private val logger = Logger.getInstance(ExportDiffAction::class.java)
-    
+
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) ?: return
-        
+
+        val presenter = ExportNotificationPresenter(project)
         val history = ExportHistory.getInstance(project)
         val lastExport = history.getRecentExports().firstOrNull()
-        
+
         if (lastExport == null) {
-            NotificationUtils.showNotification(
-                project,
-                "No Previous Export",
-                "No previous export found to compare against",
-                NotificationType.INFORMATION
-            )
+            presenter.showNoPreviousExportNotification()
             return
         }
-        
+
         // Generate current export
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "Generating Export Diff") {
-            override fun run(indicator: ProgressIndicator) {
-                val settingsState = SourceClipboardExportSettings.getInstance().state
-                val exporter = SourceExporter(project, settingsState, indicator)
-                val currentResult = runBlocking {
-                    exporter.exportSources(selectedFiles)
-                }
-                
-                SwingUtilities.invokeLater {
-                    showDiffDialog(project, lastExport, currentResult, selectedFiles.toList())
-                }
-            }
-        })
+        ProgressManager.getInstance()
+                .run(
+                        object : Task.Backgroundable(project, "Generating Export Diff") {
+                            override fun run(indicator: ProgressIndicator) {
+                                val settingsState =
+                                        SourceClipboardExportSettings.getInstance().state
+                                val exporter = SourceExporter(project, settingsState, indicator)
+                                val currentResult = runBlocking {
+                                    exporter.exportSources(selectedFiles)
+                                }
+
+                                SwingUtilities.invokeLater {
+                                    showDiffDialog(
+                                            project,
+                                            lastExport,
+                                            currentResult,
+                                            selectedFiles.toList(),
+                                            presenter
+                                    )
+                                }
+                            }
+                        }
+                )
     }
-    
+
     private fun showDiffDialog(
-        project: Project,
-        lastExport: ExportHistory.ExportEntry,
-        currentResult: SourceExporter.ExportResult,
-        selectedFiles: List<VirtualFile>
+            project: Project,
+            lastExport: ExportHistory.ExportEntry,
+            currentResult: SourceExporter.ExportResult,
+            selectedFiles: List<VirtualFile>,
+            presenter: ExportNotificationPresenter
     ) {
-        val dialog = ExportDiffDialog(project, lastExport, currentResult, selectedFiles)
+        val dialog = ExportDiffDialog(project, lastExport, currentResult, selectedFiles, presenter)
         dialog.show()
     }
-    
+
     override fun update(e: AnActionEvent) {
         e.presentation.isEnabledAndVisible = ActionUpdateSupport.hasProjectAndFiles(e)
     }
-    
+
     override fun getActionUpdateThread(): ActionUpdateThread {
         return ActionUpdateThread.BGT
     }
 }
 
 class ExportDiffDialog(
-    private val project: Project,
-    private val lastExport: ExportHistory.ExportEntry,
-    private val currentResult: SourceExporter.ExportResult,
-    private val selectedFiles: List<VirtualFile>
+        private val project: Project,
+        private val lastExport: ExportHistory.ExportEntry,
+        private val currentResult: SourceExporter.ExportResult,
+        private val selectedFiles: List<VirtualFile>,
+        private val presenter: ExportNotificationPresenter
 ) : DialogWrapper(project) {
 
     // Normalize paths so that legacy absolute paths in history entries are compared
     // consistently with current relative paths from the exporter.
     internal val currentPaths = normalizePaths(currentResult.includedPaths).toSet()
     internal val lastPaths = normalizeHistoricalPaths(project, lastExport.filePaths).toSet()
-    
+
     init {
         title = "Export Diff View"
         setSize(800, 600)
         init()
     }
-    
+
     override fun createCenterPanel(): JComponent? {
         val splitter = JBSplitter(true, 0.3f)
-        
+
         // Top panel - statistics and changes summary
         val topPanel = createSummaryPanel()
         splitter.firstComponent = topPanel
-        
+
         // Bottom panel - detailed diff
         val bottomPanel = createDiffPanel()
         splitter.secondComponent = bottomPanel
-        
+
         return splitter
     }
-    
+
     private fun createSummaryPanel(): JComponent {
         val panel = JPanel(BorderLayout())
-        
+
         val statsPanel = JPanel()
         statsPanel.layout = BoxLayout(statsPanel, BoxLayout.Y_AXIS)
-        
+
         // Statistics comparison
         statsPanel.add(JBLabel("Previous Export: ${lastExport.summary}"))
-        
+
         val currentSizeBytes = currentResult.content.toByteArray(Charsets.UTF_8).size
         val currentTokens = StringUtils.estimateTokensWithSubwordHeuristic(currentResult.content)
         val currentSizeKB = currentSizeBytes / 1024.0
-        val currentSizeDisplay = if (currentSizeKB < 1024) {
-            String.format("%.1f KB", currentSizeKB)
-        } else {
-            String.format("%.1f MB", currentSizeKB / 1024.0)
-        }
-        
-        statsPanel.add(JBLabel("Current Export: ${currentResult.processedFileCount} files, $currentSizeDisplay, ~${String.format("%,d", currentTokens)} tokens"))
-        
+        val currentSizeDisplay =
+                if (currentSizeKB < 1024) {
+                    String.format("%.1f KB", currentSizeKB)
+                } else {
+                    String.format("%.1f MB", currentSizeKB / 1024.0)
+                }
+
+        statsPanel.add(
+                JBLabel(
+                        "Current Export: ${currentResult.processedFileCount} files, $currentSizeDisplay, ~${String.format("%,d", currentTokens)} tokens"
+                )
+        )
+
         // Changes summary
         val addedFiles = currentPaths - lastPaths
         val removedFiles = lastPaths - currentPaths
         val unchangedFiles = currentPaths.intersect(lastPaths)
-        
+
         statsPanel.add(Box.createVerticalStrut(10))
         statsPanel.add(JBLabel("Changes:"))
         statsPanel.add(JBLabel("  Added: ${addedFiles.size} files"))
         statsPanel.add(JBLabel("  Removed: ${removedFiles.size} files"))
         statsPanel.add(JBLabel("  Unchanged: ${unchangedFiles.size} files"))
-        
+
         panel.add(statsPanel, BorderLayout.NORTH)
-        
+
         return panel
     }
-    
+
     private fun createDiffPanel(): JComponent {
         val addedFiles = currentPaths - lastPaths.toSet()
         val removedFiles = lastPaths.toSet() - currentPaths
-        
+
         val diffText = StringBuilder()
-        
+
         if (addedFiles.isNotEmpty()) {
             diffText.append("ADDED FILES:\n")
-            addedFiles.forEach { path ->
-                diffText.append("+ $path\n")
-            }
+            addedFiles.forEach { path -> diffText.append("+ $path\n") }
             diffText.append("\n")
         }
-        
+
         if (removedFiles.isNotEmpty()) {
             diffText.append("REMOVED FILES:\n")
-            removedFiles.forEach { path ->
-                diffText.append("- $path\n")
-            }
+            removedFiles.forEach { path -> diffText.append("- $path\n") }
             diffText.append("\n")
         }
-        
+
         if (addedFiles.isEmpty() && removedFiles.isEmpty()) {
             diffText.append("No file changes detected.\n")
             diffText.append("The same files are being exported as in the previous export.")
         }
-        
+
         val textArea = JTextArea(diffText.toString())
         textArea.isEditable = false
         textArea.font = UIManager.getFont("MonoSpaced.font")
-        
+
         return JBScrollPane(textArea)
     }
-    
+
     override fun createActions(): Array<Action> {
-        val copyDiffAction = object : AbstractAction("Copy Diff") {
-            override fun actionPerformed(e: java.awt.event.ActionEvent?) {
-                copyDiffToClipboard()
-            }
-        }
-        
-        val exportChangesAction = object : AbstractAction("Export Changes Only") {
-            override fun actionPerformed(e: java.awt.event.ActionEvent?) {
-                exportChangesOnly()
-                close(OK_EXIT_CODE)
-            }
-        }
-        
+        val copyDiffAction =
+                object : AbstractAction("Copy Diff") {
+                    override fun actionPerformed(e: java.awt.event.ActionEvent?) {
+                        copyDiffToClipboard()
+                    }
+                }
+
+        val exportChangesAction =
+                object : AbstractAction("Export Changes Only") {
+                    override fun actionPerformed(e: java.awt.event.ActionEvent?) {
+                        exportChangesOnly()
+                        close(OK_EXIT_CODE)
+                    }
+                }
+
         return arrayOf(copyDiffAction, exportChangesAction, cancelAction, okAction)
     }
-    
+
     private fun copyDiffToClipboard() {
         val addedFiles = currentPaths - lastPaths.toSet()
         val removedFiles = lastPaths.toSet() - currentPaths
-        
+
         val diffText = StringBuilder()
         diffText.append("Export Diff Summary\n")
         diffText.append("===================\n\n")
-        
+
         diffText.append("Previous: ${lastExport.summary}\n")
-        
+
         val currentSizeBytes = currentResult.content.toByteArray(Charsets.UTF_8).size
         val currentTokens = StringUtils.estimateTokensWithSubwordHeuristic(currentResult.content)
         val currentSizeKB = currentSizeBytes / 1024.0
-        val currentSizeDisplay = if (currentSizeKB < 1024) {
-            String.format("%.1f KB", currentSizeKB)
-        } else {
-            String.format("%.1f MB", currentSizeKB / 1024.0)
-        }
+        val currentSizeDisplay =
+                if (currentSizeKB < 1024) {
+                    String.format("%.1f KB", currentSizeKB)
+                } else {
+                    String.format("%.1f MB", currentSizeKB / 1024.0)
+                }
         diffText.append("Current: ${currentResult.processedFileCount} files, $currentSizeDisplay, ~${String.format("%,d", currentTokens)} tokens\n\n")
-        
+
         if (addedFiles.isNotEmpty()) {
             diffText.append("Added Files (${addedFiles.size}):\n")
-            addedFiles.forEach { path ->
-                diffText.append("+ $path\n")
-            }
+            addedFiles.forEach { path -> diffText.append("+ $path\n") }
             diffText.append("\n")
         }
-        
+
         if (removedFiles.isNotEmpty()) {
             diffText.append("Removed Files (${removedFiles.size}):\n")
-            removedFiles.forEach { path ->
-                diffText.append("- $path\n")
-            }
+            removedFiles.forEach { path -> diffText.append("- $path\n") }
         }
-        
+
         CopyPasteManager.getInstance().setContents(StringSelection(diffText.toString()))
-        
-        NotificationUtils.showNotification(
-            project,
-            "Diff Copied",
-            "Export diff copied to clipboard",
-            NotificationType.INFORMATION
-        )
+
+        presenter.showDiffCopiedNotification()
     }
-    
+
     private fun exportChangesOnly() {
         val addedFiles = currentPaths - lastPaths.toSet()
-        
+
         if (addedFiles.isEmpty()) {
-            NotificationUtils.showNotification(
-                project,
-                "No Changes",
-                "No new files to export",
-                NotificationType.INFORMATION
-            )
+            presenter.showNoChangesNotification()
             return
         }
-        
+
         // Resolve relative paths to VirtualFiles under the repository root
         val changedVirtualFiles = resolveVirtualFiles(addedFiles)
         SmartExportUtils.exportFiles(project, changedVirtualFiles.toTypedArray())

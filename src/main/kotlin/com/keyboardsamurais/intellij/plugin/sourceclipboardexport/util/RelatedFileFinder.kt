@@ -92,13 +92,13 @@ object RelatedFileFinder {
         
         // Special handling for __tests__ folders (React/Next.js convention)
         if (language in listOf(Language.JAVASCRIPT, Language.TYPESCRIPT, Language.JSX, Language.TSX)) {
-            findTestsInTestFolders(project, sourceFile, testFiles)
+            findTestsInTestFolders(sourceFile, testFiles)
         }
         
         return testFiles.distinct()
     }
     
-    private fun findTestsInTestFolders(project: Project, sourceFile: VirtualFile, testFiles: MutableList<VirtualFile>) {
+    private fun findTestsInTestFolders(sourceFile: VirtualFile, testFiles: MutableList<VirtualFile>) {
         val fileName = sourceFile.nameWithoutExtension
         val parentDir = sourceFile.parent ?: return
         
@@ -207,7 +207,7 @@ object RelatedFileFinder {
         return recentFiles
     }
     
-    fun findCurrentPackageFiles(project: Project, sourceFile: VirtualFile): List<VirtualFile> {
+    fun findCurrentPackageFiles(sourceFile: VirtualFile): List<VirtualFile> {
         val packageFiles = mutableListOf<VirtualFile>()
         val parent = sourceFile.parent ?: return emptyList()
         val language = detectLanguage(sourceFile)
@@ -335,7 +335,7 @@ object RelatedFileFinder {
 
         // Prefer PSI-level import resolution when possible
         when (language) {
-            Language.JAVA -> imports.addAll(resolveJavaImportsPsi(project, psiFile))
+            Language.JAVA -> imports.addAll(resolveJavaImportsPsi(psiFile))
             Language.KOTLIN -> imports.addAll(resolveKotlinImportsIfAvailable(project, psiFile))
             else -> {}
         }
@@ -394,7 +394,7 @@ object RelatedFileFinder {
         return imports.toList()
     }
 
-    private fun resolveJavaImportsPsi(project: Project, psiFile: PsiFile): List<VirtualFile> {
+    private fun resolveJavaImportsPsi(psiFile: PsiFile): List<VirtualFile> {
         val jf = psiFile as? PsiJavaFile ?: return emptyList()
         return runReadAction {
             jf.importList?.allImportStatements?.mapNotNull { stmt ->

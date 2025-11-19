@@ -8,6 +8,7 @@ import com.intellij.openapi.project.Project
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceClipboardExportSettings
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.ExportHistory
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.SourceExporter
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.gitignore.HierarchicalGitignoreParser
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.StringUtils
 import io.mockk.coEvery
@@ -32,21 +33,24 @@ class SmartExportUtilsTest {
 
     @BeforeEach
     fun setup() {
+        every { project.getService(HierarchicalGitignoreParser::class.java) } returns
+                mockk(relaxed = true)
         SourceClipboardExportSettings.setTestInstance(SourceClipboardExportSettings())
         mockkConstructor(SourceExporter::class)
 
-        val exportResult = SourceExporter.ExportResult(
-            content = "contents",
-            processedFileCount = 1,
-            excludedByFilterCount = 0,
-            excludedBySizeCount = 0,
-            excludedByBinaryContentCount = 0,
-            excludedByIgnoredNameCount = 0,
-            excludedByGitignoreCount = 0,
-            excludedExtensions = emptySet(),
-            limitReached = false,
-            includedPaths = listOf("Sample.kt")
-        )
+        val exportResult =
+                SourceExporter.ExportResult(
+                        content = "contents",
+                        processedFileCount = 1,
+                        excludedByFilterCount = 0,
+                        excludedBySizeCount = 0,
+                        excludedByBinaryContentCount = 0,
+                        excludedByIgnoredNameCount = 0,
+                        excludedByGitignoreCount = 0,
+                        excludedExtensions = emptySet(),
+                        limitReached = false,
+                        includedPaths = listOf("Sample.kt")
+                )
         coEvery { anyConstructed<SourceExporter>().exportSources(any()) } returns exportResult
 
         mockkObject(NotificationUtils)
@@ -72,7 +76,14 @@ class SmartExportUtilsTest {
         SmartExportUtils.exportFiles(project, arrayOf(sourceFile))
 
         coVerify { anyConstructed<SourceExporter>().exportSources(any()) }
-        verify { NotificationUtils.showNotification(project, match { it.contains("Export completed") }, any(), any()) }
+        verify {
+            NotificationUtils.showNotification(
+                    project,
+                    match { it.contains("Export completed") },
+                    any(),
+                    any()
+            )
+        }
     }
 
     @Test
@@ -85,20 +96,22 @@ class SmartExportUtilsTest {
         val application = mockk<Application>(relaxed = true)
         every { application.isUnitTestMode } returns false
         every { ApplicationManager.getApplication() } returns application
-        every { application.invokeLater(any()) } answers {
-            val runnable = firstArg<Runnable>()
-            runnable.run()
-        }
+        every { application.invokeLater(any()) } answers
+                {
+                    val runnable = firstArg<Runnable>()
+                    runnable.run()
+                }
 
         val progressManager = mockk<ProgressManager>(relaxed = true)
         every { ProgressManager.getInstance() } returns progressManager
         every {
             progressManager.runProcessWithProgressSynchronously(any(), any(), any(), any<Project>())
-        } answers {
-            val runnable = firstArg<Runnable>()
-            runnable.run()
-            true
-        }
+        } answers
+                {
+                    val runnable = firstArg<Runnable>()
+                    runnable.run()
+                    true
+                }
 
         val copyPasteManager = mockk<CopyPasteManager>(relaxed = true)
         every { CopyPasteManager.getInstance() } returns copyPasteManager
@@ -109,11 +122,7 @@ class SmartExportUtilsTest {
 
         SmartExportUtils.exportFiles(project, arrayOf(sourceFile))
 
-        verify {
-            copyPasteManager.setContents(any())
-        }
-        verify {
-            history.addExport(any(), any(), any(), any())
-        }
+        verify { copyPasteManager.setContents(any()) }
+        verify { history.addExport(any(), any(), any(), any()) }
     }
 }

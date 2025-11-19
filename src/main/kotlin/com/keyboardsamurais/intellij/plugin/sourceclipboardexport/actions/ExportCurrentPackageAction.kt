@@ -32,7 +32,7 @@ class ExportCurrentPackageAction : AnAction() {
             selectedFiles.forEachIndexed { idx, file ->
                 indicator.fraction = (idx.toDouble() / selectedFiles.size).coerceIn(0.0, 1.0)
                 indicator.text = "Analyzing ${file.name} (${idx + 1}/${selectedFiles.size})"
-                val packageFiles = RelatedFileFinder.findCurrentPackageFiles(project, file)
+                val packageFiles = RelatedFileFinder.findCurrentPackageFiles(file)
                 allFiles.addAll(packageFiles)
                 logger.info("Found ${packageFiles.size} package files for ${file.name}")
             }
