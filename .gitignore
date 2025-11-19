@@ -329,3 +329,4 @@ Temporary Items
 documentation/
 /.specstory/
 /.gradle-home/
+/.gradle-tmp/

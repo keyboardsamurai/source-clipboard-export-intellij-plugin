@@ -42,6 +42,7 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
     testImplementation("org.junit.jupiter:junit-jupiter-params:5.10.2") // For parameterized tests
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.10.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5:1.9.24")
     // Mockito 5.3.0+ includes inline mocking by default in mockito-core
     testImplementation("org.mockito:mockito-core:5.17.0")
@@ -125,7 +126,7 @@ tasks {
         }
         extensions.configure(JacocoTaskExtension::class.java) {
             isEnabled = true
-            destinationFile = layout.buildDirectory.file("jacoco/${name}.exec").get().asFile
+            setDestinationFile(layout.buildDirectory.file("jacoco/${name}.exec").get().asFile)
             isIncludeNoLocationClasses = true
             excludes = listOf("jdk.internal.*")
         }
