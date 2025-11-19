@@ -9,6 +9,10 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.Export
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportWithConfigsAction
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportWithResourcesAction
 
+/**
+ * Collects actions that bring in non-source assets (configs, templates, extra test suites). Makes
+ * it obvious that these commands expand beyond raw code.
+ */
 class RelatedResourcesExportGroup : ActionGroup("Related Resources", "Export with related resources", null) {
     
     private val exportWithConfigsAction = ExportWithConfigsAction()
@@ -31,6 +35,7 @@ class RelatedResourcesExportGroup : ActionGroup("Related Resources", "Export wit
         e.presentation.isEnabledAndVisible = ActionUpdateSupport.hasProjectAndFiles(e)
     }
     
+    /** Uses BGT because enablement logic inspects selected files. */
     override fun getActionUpdateThread(): ActionUpdateThread {
         return ActionUpdateThread.BGT
     }

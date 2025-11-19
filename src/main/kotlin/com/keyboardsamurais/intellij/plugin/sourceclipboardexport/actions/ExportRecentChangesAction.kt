@@ -8,6 +8,10 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.ActionRunners
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.RelatedFileFinder
 
+/**
+ * Exports files that changed within a configurable number of hours (default 24). Relies on VFS
+ * timestamps rather than VCS so it works even when Git data is unavailable.
+ */
 class ExportRecentChangesAction : AnAction() {
     
     init {
@@ -17,6 +21,10 @@ class ExportRecentChangesAction : AnAction() {
     
     private val logger = Logger.getInstance(ExportRecentChangesAction::class.java)
     
+    /**
+     * Scans the project index for recent files via [RelatedFileFinder.findRecentChanges] and sends
+     * them to [SmartExportUtils]. Users are notified when no changes were detected.
+     */
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         ActionRunners.runSmartBackground(project, "Finding Recent Changes") { _: ProgressIndicator ->
@@ -37,6 +45,7 @@ class ExportRecentChangesAction : AnAction() {
         }
     }
     
+    /** Only requires a project because the action does not depend on selection context. */
     override fun update(e: AnActionEvent) {
         e.presentation.isEnabledAndVisible = ActionUpdateSupport.hasProject(e)
     }

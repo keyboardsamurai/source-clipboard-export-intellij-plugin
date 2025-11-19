@@ -263,6 +263,7 @@ class HierarchicalGitignoreParser(private val project: Project) : Disposable {
     }
 
     /** Clears the parser cache. */
+    /** Clears all cached [GitignoreParser] instances. Called before each export to avoid staleness. */
     fun clearCache() {
         parserCache.clear()
         logger.debug("Cleared GitignoreParser cache")

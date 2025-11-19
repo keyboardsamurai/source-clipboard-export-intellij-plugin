@@ -31,6 +31,14 @@ import javax.swing.SpinnerNumberModel
 import javax.swing.UIManager
 import javax.swing.table.DefaultTableModel
 
+/**
+ * Implements IntelliJ's [Configurable] interface to expose plugin settings under *Tools >
+ * Source Clipboard Export*. The UI mirrors the backing [SourceClipboardExportSettings.State] so
+ * users can configure file limits, formatting, filters, and previews without leaving the IDE.
+ *
+ * Because IntelliJ instantiates configurables declaratively via `plugin.xml`, this class focuses on
+ * building Swing components and syncing them with the settings service.
+ */
 class SourceClipboardExportConfigurable : Configurable {
     private var settingsPanel: JPanel? = null
     private var fileCountSpinner: JSpinner? = null
@@ -47,6 +55,10 @@ class SourceClipboardExportConfigurable : Configurable {
     private var includeLineNumbersCheckBox: JBCheckBox? = null
     private var outputFormatComboBox: JComboBox<String>? = null
 
+    /**
+     * Constructs the settings UI tree on demand. Called whenever IntelliJ opens the Settings
+     * dialog, so the UI should be fast to instantiate and free of side effects.
+     */
     override fun createComponent(): JComponent? {
         settingsPanel = JPanel(GridBagLayout())
         val gbc = createGridBagConstraints()
@@ -290,6 +302,10 @@ class SourceClipboardExportConfigurable : Configurable {
         }
     }
 
+    /**
+     * Tells the Settings dialog whether the Apply button should be active. Compares the current UI
+     * state to the persisted [SourceClipboardExportSettings.State].
+     */
     override fun isModified(): Boolean {
         val settings = SourceClipboardExportSettings.getInstance().state
         val currentFilters = (0 until filtersTableModel!!.rowCount).map {
@@ -322,6 +338,10 @@ class SourceClipboardExportConfigurable : Configurable {
                currentOutputFormat != settings.outputFormat
     }
 
+    /**
+     * Persists UI state back to [SourceClipboardExportSettings]. The dialog calls this when users
+     * click *Apply* or *OK*.
+     */
     override fun apply() {
         if (!validateInput()) return // Perform validation before applying
 
@@ -361,6 +381,10 @@ class SourceClipboardExportConfigurable : Configurable {
                 "Ignored = ${settings.ignoredNames.joinToString()}")
     }
 
+    /**
+     * Resets the UI controls to match [SourceClipboardExportSettings]. Called both when the dialog
+     * opens and when the user presses *Reset*.
+     */
     override fun reset() {
         val settings = SourceClipboardExportSettings.getInstance().state // Get state directly
         fileCountSpinner!!.value = settings.fileCount

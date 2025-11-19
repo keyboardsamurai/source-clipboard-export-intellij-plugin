@@ -8,6 +8,10 @@ import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
 import kotlin.math.min
 
+/**
+ * File/VFS helpers that need to run inside read actions and are shared by exporter core,
+ * notifications, and IntelliJ services. Keeping them centralized simplifies mocking in tests.
+ */
 object FileUtils {
     private val LOGGER = Logger.getInstance(FileUtils::class.java)
 
@@ -90,11 +94,16 @@ object FileUtils {
         }
     }
 
+    /**
+     * Produces a repository-relative path for notifications and headings. Falls back to the file
+     * name when no repository root is available (e.g., tests).
+     */
     fun getRelativePath(file: VirtualFile, project: Project): String {
         val repositoryRoot = getRepositoryRoot(project)
         return repositoryRoot?.let { VfsUtil.getRelativePath(file, it, '/') } ?: file.name
     }
 
+    /** Returns the first content root for the project, or `null` in tests/headless environments. */
     fun getRepositoryRoot(project: Project): VirtualFile? {
         return try {
             ReadAction.compute<VirtualFile?, Exception> {
@@ -107,10 +116,15 @@ object FileUtils {
         }
     }
 
+    /** Checks the extension against [AppConstants.COMMON_BINARY_EXTENSIONS]. */
     fun isKnownBinaryExtension(file: VirtualFile): Boolean {
         return file.extension?.lowercase() in AppConstants.COMMON_BINARY_EXTENSIONS
     }
 
+    /**
+     * Performs a lightweight heuristic on the first kilobyte of the file to detect binary content.
+     * Used as a fallback when the extension is unknown.
+     */
     fun isLikelyBinaryContent(file: VirtualFile): Boolean {
         if (file.length == 0L) return false
         val sampleSize = min(file.length, 1024).toInt()
@@ -135,6 +149,10 @@ object FileUtils {
         return nonTextRatio > threshold
     }
 
+    /**
+     * Reads file contents taking care to stay inside IntelliJ's read-access constraints. Falls back
+     * to `VfsUtil.loadText` so tests that mock `contentsToByteArray` still work.
+     */
     fun readFileContent(file: VirtualFile): String {
         return try {
             // Try to use contentsToByteArray first, which is more likely to be mocked in tests

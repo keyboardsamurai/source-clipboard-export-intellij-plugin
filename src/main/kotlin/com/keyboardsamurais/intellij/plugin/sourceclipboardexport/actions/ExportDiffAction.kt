@@ -34,10 +34,19 @@ import javax.swing.JTextArea
 import javax.swing.SwingUtilities
 import javax.swing.UIManager
 
+/**
+ * Generates a diff between the most recent clipboard export and what would be exported for the
+ * current selection. The action previews file additions/removals before copying anything, helping
+ * users scope their share.
+ */
 class ExportDiffAction : AnAction("Export Diff", "Show differences from last export", null) {
 
     private val logger = Logger.getInstance(ExportDiffAction::class.java)
 
+    /**
+     * Loads the previous export from [ExportHistory], generates a temporary export for the current
+     * selection, and opens [ExportDiffDialog] to visualize the delta.
+     */
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) ?: return
@@ -88,15 +97,24 @@ class ExportDiffAction : AnAction("Export Diff", "Show differences from last exp
         dialog.show()
     }
 
+    /**
+     * Requires a project and non-empty selection because both historical and current exports are
+     * file-based operations.
+     */
     override fun update(e: AnActionEvent) {
         e.presentation.isEnabledAndVisible = ActionUpdateSupport.hasProjectAndFiles(e)
     }
 
+    /** Must run on BGT because `update` inspects selected files. */
     override fun getActionUpdateThread(): ActionUpdateThread {
         return ActionUpdateThread.BGT
     }
 }
 
+/**
+ * Swing dialog that visualizes file-level differences between the previous and current export.
+ * Provides helper actions to copy the summary or export only changed files.
+ */
 class ExportDiffDialog(
         private val project: Project,
         private val lastExport: ExportHistory.ExportEntry,
@@ -130,6 +148,10 @@ class ExportDiffDialog(
         return splitter
     }
 
+    /**
+     * Builds the top summary panel containing statistics, size/token comparison, and counts of
+     * added/removed files.
+     */
     private fun createSummaryPanel(): JComponent {
         val panel = JPanel(BorderLayout())
 
@@ -171,6 +193,9 @@ class ExportDiffDialog(
         return panel
     }
 
+    /**
+     * Renders the textual diff (added/removed file lists) inside a scroll pane, ready for copying.
+     */
     private fun createDiffPanel(): JComponent {
         val addedFiles = currentPaths - lastPaths.toSet()
         val removedFiles = lastPaths.toSet() - currentPaths
@@ -220,6 +245,10 @@ class ExportDiffDialog(
         return arrayOf(copyDiffAction, exportChangesAction, cancelAction, okAction)
     }
 
+    /**
+     * Formats a human-friendly summary of the diff and puts it onto the clipboard. The presenter
+     * surfaces a notification so users know the operation succeeded.
+     */
     private fun copyDiffToClipboard() {
         val addedFiles = currentPaths - lastPaths.toSet()
         val removedFiles = lastPaths.toSet() - currentPaths
@@ -257,6 +286,10 @@ class ExportDiffDialog(
         presenter.showDiffCopiedNotification()
     }
 
+    /**
+     * Resolves virtual files for all added paths and invokes [SmartExportUtils]. When no files were
+     * added the presenter emits a friendly notification rather than performing a no-op export.
+     */
     private fun exportChangesOnly() {
         val addedFiles = currentPaths - lastPaths.toSet()
 
@@ -286,10 +319,15 @@ class ExportDiffDialog(
     }
 }
 
+/** Normalizes path separators so comparisons are platform agnostic. */
 internal fun normalizePaths(paths: List<String>): List<String> {
     return paths.map { it.replace('\\', '/') }
 }
 
+/**
+ * Converts historical absolute paths to repository-relative paths so they can be compared with the
+ * modern exporter output (which is already relative).
+ */
 internal fun normalizeHistoricalPaths(project: Project, paths: List<String>): List<String> {
     val root = FileUtils.getRepositoryRoot(project) ?: return normalizePaths(paths)
     val rootPath = root.path.replace('\\', '/').trimEnd('/')

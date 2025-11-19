@@ -11,8 +11,12 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.groups
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.groups.VersionHistoryExportGroup
 
 /**
- * Root popup group that bundles the various "smart" export options (dependencies,
- * structure, related resources, version history) under one menu entry.
+ * Root popup group registered in `plugin.xml` that collects all high-level "Smart Export"
+ * entrypoints (dependencies, structure, resources, history). When IDEA renders the action group,
+ * it lazily instantiates each child group so submenus stay responsive.
+ *
+ * Grouping everything under a single `ActionGroup` keeps `plugin.xml` tidy and lets us reuse the
+ * same enablement check for every child action.
  */
 class SmartExportGroup : ActionGroup("Export with Context", "Smart export with related files", null) {
     
@@ -41,6 +45,7 @@ class SmartExportGroup : ActionGroup("Export with Context", "Smart export with r
         e.presentation.isEnabledAndVisible = ActionUpdateSupport.hasProjectAndFiles(e)
     }
     
+    /** BGT ensures IDEA can evaluate selection state without blocking the EDT. */
     override fun getActionUpdateThread(): ActionUpdateThread {
         return ActionUpdateThread.BGT
     }

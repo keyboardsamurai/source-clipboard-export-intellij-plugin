@@ -13,7 +13,11 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.Notificat
 import kotlinx.coroutines.runBlocking
 
 /**
- * Action to export all implementations of selected interfaces/classes
+ * Adds all implementations/subclasses of the currently selected files and runs a single export.
+ *
+ * This action is available in the *Code Structure* submenu and is ideal when sharing abstract
+ * types with an LLM—the callee hierarchy is automatically appended so the conversation contains
+ * concrete behavior.
  */
 class ExportWithImplementationsAction : AnAction() {
     private val logger = Logger.getInstance(ExportWithImplementationsAction::class.java)
@@ -23,6 +27,11 @@ class ExportWithImplementationsAction : AnAction() {
         templatePresentation.description = "Export all implementations of selected interfaces/classes"
     }
     
+    /**
+     * Launches an implementation scan for each selected file, merges the results, and exports the
+     * unioned set. Diagnostics are captured through [DebugTracer] and later surfaced via
+     * [DebugOutputDialog].
+     */
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) ?: return
@@ -109,6 +118,10 @@ class ExportWithImplementationsAction : AnAction() {
         }
     }
     
+    /**
+     * Enables the action only when JVM files are selected; Kotlin/Java PSI is the only pipeline we
+     * currently support for implementation discovery.
+     */
     override fun update(e: AnActionEvent) {
         val project = e.project
         val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)
@@ -124,5 +137,6 @@ class ExportWithImplementationsAction : AnAction() {
         return extension in setOf("java", "kt", "kts")
     }
     
+    /** Background thread ensures `update` can safely query selected files. */
     override fun getActionUpdateThread() = com.intellij.openapi.actionSystem.ActionUpdateThread.BGT
 }

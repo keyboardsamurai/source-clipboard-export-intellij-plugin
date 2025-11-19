@@ -14,7 +14,9 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.RelatedFi
 import kotlinx.coroutines.runBlocking
 
 /**
- * Action to export files with both their dependents and dependencies
+ * Collects both outgoing dependencies (imports) and incoming dependents for the current selection.
+ * The resulting superset is forwarded to [SmartExportUtils] which keeps clipboard handling
+ * consistent with the rest of the plugin.
  */
 class ExportBidirectionalDependenciesAction : AnAction() {
 
@@ -22,6 +24,10 @@ class ExportBidirectionalDependenciesAction : AnAction() {
         private val LOG = Logger.getInstance(ExportBidirectionalDependenciesAction::class.java)
     }
 
+    /**
+     * Performance toggles exposed via system properties. Because the action may touch hundreds of
+     * files in large mono-repos we let advanced users restrict recursion depth.
+     */
     object Config {
         private fun boolProp(key: String, default: Boolean) = System.getProperty(key)?.toBooleanStrictOrNull() ?: default
         private fun intProp(key: String, default: Int) = System.getProperty(key)?.toIntOrNull() ?: default
@@ -35,6 +41,12 @@ class ExportBidirectionalDependenciesAction : AnAction() {
         templatePresentation.icon = com.keyboardsamurais.intellij.plugin.sourceclipboardexport.icons.DependencyIcons.BIDIRECTIONAL
     }
 
+    /**
+     * Executes dependency discovery in multiple phases (dependents, direct dependencies, optional
+     * transitive dependencies for dependents) and enforces throttling to keep PSI work bounded.
+     * The heavy work is wrapped in [ActionRunners.runSmartBackground] so it waits for up-to-date
+     * indices.
+     */
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) ?: return
@@ -179,6 +191,7 @@ class ExportBidirectionalDependenciesAction : AnAction() {
         }
     }
 
+    /** Makes the action available only when a project exists and at least one file is selected. */
     override fun update(e: AnActionEvent) {
         val project = e.project
         val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)
@@ -188,5 +201,6 @@ class ExportBidirectionalDependenciesAction : AnAction() {
                                   selectedFiles.any { !it.isDirectory }
     }
 
+    /** BGT is required because `update` accesses `CommonDataKeys.VIRTUAL_FILE_ARRAY`. */
     override fun getActionUpdateThread() = com.intellij.openapi.actionSystem.ActionUpdateThread.BGT
 }

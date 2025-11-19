@@ -10,7 +10,8 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 /**
- * Class for generating repository summary information.
+ * Generates optional repository metadata at the top of an export (file counts, token counts, top
+ * files, remote URL). The formatter injects the text based on the configured [AppConstants.OutputFormat].
  */
 class RepositorySummary(
     private val project: Project,
@@ -35,6 +36,9 @@ class RepositorySummary(
 
     /**
      * Generates a repository summary in the specified format.
+     *
+     * @param outputFormat determines whether the summary is plain text, Markdown, or XML
+     * @return formatted summary string (may be empty if no stats are available)
      */
     fun generateSummary(outputFormat: AppConstants.OutputFormat): String {
         val fileStats = collectFileStats()

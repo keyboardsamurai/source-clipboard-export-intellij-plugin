@@ -52,6 +52,12 @@ class SourceExporter(
             val includedPaths: List<String>
     )
 
+    /**
+     * Entry point used by all actions. Traverses the input selection, applies filters, formats the
+     * surviving files, and returns clipboard-ready text alongside stats.
+     *
+     * @param selectedFiles top-level files or directories chosen by the user
+     */
     suspend fun exportSources(selectedFiles: Array<VirtualFile>): ExportResult {
         logger.info("Starting source export process.")
         logger.info("Settings: Max Files=${settings.fileCount}, Max Size KB=${settings.maxFileSizeKb}, Filters Enabled=${settings.areFiltersEnabled}, Filters=${settings.filenameFilters.joinToString()}, Ignored=${settings.ignoredNames.joinToString()}, Include Prefix=${settings.includePathPrefix}, Include Line Numbers=${settings.includeLineNumbers}")

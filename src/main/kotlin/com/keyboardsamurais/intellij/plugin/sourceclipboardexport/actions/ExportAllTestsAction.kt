@@ -10,7 +10,8 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.ExtendedT
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
 
 /**
- * Action to export all types of tests including unit, integration, E2E, and test resources
+ * Collects every test artifact related to the selection: unit/integration/E2E code, fixtures, and
+ * helpers. Ideal when sharing a behavior and the corresponding specs.
  */
 class ExportAllTestsAction : AnAction() {
     
@@ -19,6 +20,11 @@ class ExportAllTestsAction : AnAction() {
         templatePresentation.description = "Export all test types including integration and E2E tests"
     }
     
+    /**
+     * Uses [ExtendedTestFinder] to discover every relevant test artifact, enforces optional caps,
+     * and exports the combined set. Also posts an informational balloon describing the mix of test
+     * types included.
+     */
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) ?: return
@@ -92,6 +98,7 @@ class ExportAllTestsAction : AnAction() {
         }
     }
     
+    /** Requires at least one non-directory file because tests are resolved relative to files. */
     override fun update(e: AnActionEvent) {
         val project = e.project
         val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)
@@ -101,6 +108,7 @@ class ExportAllTestsAction : AnAction() {
                                   selectedFiles.any { !it.isDirectory }
     }
     
+    /** Uses the BGT because update logic queries selected files. */
     override fun getActionUpdateThread() = com.intellij.openapi.actionSystem.ActionUpdateThread.BGT
     
     private data class TestCategories(
@@ -116,6 +124,10 @@ class ExportAllTestsAction : AnAction() {
                    performanceTests.size + testResources.size + testUtilities.size
     }
     
+    /**
+     * Buckets discovered tests to build a friendly notification and to help users understand
+     * precisely what was included.
+     */
     private fun categorizeTests(testFiles: Set<VirtualFile>): TestCategories {
         val categories = TestCategories()
         
@@ -158,6 +170,7 @@ class ExportAllTestsAction : AnAction() {
         return categories
     }
     
+    /** Builds a human-readable summary like `3 unit, 1 integration, 2 resources`. */
     private fun buildTestDescription(categories: TestCategories): String {
         return buildString {
             append("All Tests Export (")

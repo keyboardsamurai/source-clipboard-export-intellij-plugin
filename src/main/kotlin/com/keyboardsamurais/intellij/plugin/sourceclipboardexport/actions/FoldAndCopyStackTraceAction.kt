@@ -22,11 +22,23 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.Notificat
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.StringUtils
 import java.awt.datatransfer.StringSelection
 
+/**
+ * Collapses noisy stack traces in Run/Debug consoles and places the folded output on the clipboard.
+ * The heuristics come from [StackTraceFolder] which knows how to differentiate project classes
+ * from external libraries via PSI.
+ *
+ * Available from the console context menu and marked [com.intellij.openapi.project.DumbAware] so it
+ * can run while indices are rebuilding (folding falls back to simple heuristics in that case).
+ */
 class FoldAndCopyStackTraceAction : AnAction() {
 
     private val logger = Logger.getInstance(FoldAndCopyStackTraceAction::class.java)
 
 
+    /**
+     * Enables the action when a project, editor, console, and selected text are present. Mirrors
+     * the default console context menu behavior to avoid confusing users with a disabled entry.
+     */
     override fun update(e: AnActionEvent) {
         // Retrieve necessary data from the event context
         val project: Project? = e.project
@@ -46,6 +58,10 @@ class FoldAndCopyStackTraceAction : AnAction() {
         // Optional: Keep logging for debugging if needed
         logger.trace("FoldAndCopyStackTraceAction update: project=$project, editor=$editor, hasSelection=${!selectedText.isNullOrBlank()}, consoleView=$consoleView -> isEnabled=$isEnabled")
     }
+    /**
+     * Runs the folding pipeline on a background thread, respecting cancellation from the progress
+     * manager. Clipboard interaction happens back on the EDT via [ApplicationManager.invokeLater].
+     */
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val editor = e.getData(CommonDataKeys.EDITOR) ?: return

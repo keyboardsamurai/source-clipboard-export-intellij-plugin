@@ -20,6 +20,7 @@ interface ResourceDetectionStrategy {
     ): Collection<VirtualFile>
 }
 
+/** Detects Spring MVC templates referenced via `return "viewName"` statements. */
 class SpringResourceStrategy(
     private val templateExtensions: Set<String>
 ) : ResourceDetectionStrategy {
@@ -48,6 +49,7 @@ class SpringResourceStrategy(
     }
 }
 
+/** Captures CSS module imports related to React components by base filename. */
 class ReactResourceStrategy(
     private val styleExtensions: Set<String>
 ) : ResourceDetectionStrategy {
@@ -75,6 +77,7 @@ class ReactResourceStrategy(
     }
 }
 
+/** Locates Vue single-file component companions (styles). */
 class VueResourceStrategy(
     private val styleExtensions: Set<String>
 ) : ResourceDetectionStrategy {
@@ -99,6 +102,7 @@ class VueResourceStrategy(
     }
 }
 
+/** Parses Angular `@Component` metadata (`templateUrl`, `styleUrls`). */
 class AngularResourceStrategy : ResourceDetectionStrategy {
     private val templateUrlPattern = Regex("""templateUrl\s*:\s*['"]([^'"]+)['"]""")
     private val styleUrlsBlockPattern = Regex("""styleUrls\s*:\s*\[(.*?)\]""", setOf(RegexOption.DOT_MATCHES_ALL))
@@ -142,6 +146,7 @@ class AngularResourceStrategy : ResourceDetectionStrategy {
     }
 }
 
+/** Generic string literal matcher that looks for asset file extensions in code. */
 class StringLiteralResourceStrategy(
     private val resourceExtensions: Set<String>
 ) : ResourceDetectionStrategy {
@@ -167,6 +172,7 @@ class StringLiteralResourceStrategy(
     }
 }
 
+/** Looks for files with the same basename but different extension (e.g., `.css`). */
 class NamingConventionResourceStrategy(
     private val resourceExtensions: Set<String>
 ) : ResourceDetectionStrategy {

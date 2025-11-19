@@ -13,7 +13,13 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.AppConsta
     name = "SourceClipboardExportSettings",
     storages = [Storage("SourceClipboardExportSettings.xml")]
 )
+/**
+ * Application-level service that persists exporter settings and exposes them to actions, UI
+ * components, and tests. IntelliJ serializes [State] to disk automatically, so this service just
+ * needs to provide getters/setters.
+ */
 class SourceClipboardExportSettings : PersistentStateComponent<SourceClipboardExportSettings.State> {
+    /** Mutable bean persisted by IntelliJ's state store. */
     class State {
         var fileCount: Int = 200
         var filenameFilters: MutableList<String> = mutableListOf()
@@ -30,10 +36,7 @@ class SourceClipboardExportSettings : PersistentStateComponent<SourceClipboardEx
         var stackTraceSettings: StackTraceSettings = StackTraceSettings()
     }
 
-    /**
-     * Tunable options for stack-trace folding actions. Grouped separately so the
-     * core export settings don't need to change when trace heuristics evolve.
-     */
+    /** Nested bean for stack-trace folding preferences used by [StackTraceFolder]. */
     data class StackTraceSettings(
         var minFramesToFold: Int = 3,
         var keepHeadFrames: Int = 1,
@@ -66,6 +69,10 @@ class SourceClipboardExportSettings : PersistentStateComponent<SourceClipboardEx
 
     override fun getState(): State = myState
 
+    /**
+     * Applies persisted state and performs lightweight migrations (e.g., enabling filters when a
+     * user already had patterns configured).
+     */
     override fun loadState(state: State) {
         // Backward-compatible migration: if a user already has filename filters configured
         // from a previous version (when filters were always applied), enable filters so
@@ -86,6 +93,10 @@ class SourceClipboardExportSettings : PersistentStateComponent<SourceClipboardEx
     companion object {
         private var testInstance: SourceClipboardExportSettings? = null
 
+        /**
+         * Returns the service instance when running inside IDEA or a lightweight in-memory copy
+         * when tests call code outside of the platform container.
+         */
         fun getInstance(): SourceClipboardExportSettings {
             try {
                 val application = ApplicationManager.getApplication()
@@ -101,7 +112,7 @@ class SourceClipboardExportSettings : PersistentStateComponent<SourceClipboardEx
             }
         }
 
-        // For testing purposes only
+        /** For tests that need a deterministic settings object. */
         fun setTestInstance(instance: SourceClipboardExportSettings?) {
             testInstance = instance
         }

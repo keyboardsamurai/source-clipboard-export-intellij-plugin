@@ -8,6 +8,10 @@ import java.awt.event.FocusAdapter
 import java.awt.event.FocusEvent
 import javax.swing.JTextField
 
+/**
+ * Simple text field that paints gray placeholder text whenever the field is empty and unfocused.
+ * Keeps the settings UI readable without pulling in a heavyweight component.
+ */
 class PlaceholderTextField(private val placeholder: String) : JTextField() {
     override fun paintComponent(g: Graphics) {
         super.paintComponent(g)

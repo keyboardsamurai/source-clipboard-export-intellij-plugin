@@ -9,6 +9,27 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.ActionRun
  * Keeps progress handling and iteration logic consistent across different action implementations.
  */
 object RelatedFileExportRunner {
+    /**
+     * Runs a collector block for each selected file while reporting progress, then invokes the
+     * provided callback with both the original and aggregated related files. This keeps all related
+     * actions (tests, resources, dependencies, etc.) consistent.
+     *
+     * Example:
+     * ```
+     * RelatedFileExportRunner.run(project, files, "Finding tests") { proj, file ->
+     *     RelatedFileFinder.findTestFiles(proj, file)
+     * } { originals, extras ->
+     *     SmartExportUtils.exportFiles(project, (originals + extras).toTypedArray())
+     * }
+     * ```
+     *
+     * @param project project context; used for progress manager and PSI access
+     * @param selectedFiles files chosen by the user
+     * @param progressTitle message shown in the progress dialog
+     * @param indicatorMessage lambda that produces per-file progress text
+     * @param collector callback that returns additional files for a given input file
+     * @param onComplete invoked exactly once after collection finishes, even if no extra files were found
+     */
     fun run(
         project: Project,
         selectedFiles: Array<VirtualFile>,

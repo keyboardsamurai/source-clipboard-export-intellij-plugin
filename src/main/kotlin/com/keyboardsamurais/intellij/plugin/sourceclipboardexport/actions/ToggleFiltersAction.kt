@@ -8,8 +8,24 @@ import com.intellij.openapi.project.DumbAware
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceClipboardExportSettings
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
 
+/**
+ * Toggles the global filename-filter flag exposed in [SourceClipboardExportSettings].
+ *
+ * The action surfaces as a simple enable/disable toggle in the *Smart Export* group and is
+ * available from any project. Because it implements [DumbAware], users can still switch filters
+ * on/off while indices are rebuilding, ensuring the export pipeline reads the latest setting on
+ * its next invocation.
+ *
+ * @see SourceClipboardExportSettings
+ */
 class ToggleFiltersAction : AnAction(), DumbAware {
 
+    /**
+     * Flips the `areFiltersEnabled` flag and displays a status balloon so users immediately
+     * understand how subsequent exports will behave.
+     *
+     * @param e action context supplied by the platform; must contain a project
+     */
     override fun actionPerformed(e: AnActionEvent) {
         val settings = SourceClipboardExportSettings.getInstance()
         settings.state.areFiltersEnabled = !settings.state.areFiltersEnabled
@@ -25,6 +41,10 @@ class ToggleFiltersAction : AnAction(), DumbAware {
         )
     }
 
+    /**
+     * Updates the toggle text to reflect the latest persisted state and disables the action when
+     * there is no project context (e.g., welcome screen).
+     */
     override fun update(e: AnActionEvent) {
         super.update(e)
         val settings = SourceClipboardExportSettings.getInstance()
@@ -34,10 +54,9 @@ class ToggleFiltersAction : AnAction(), DumbAware {
     }
 
     /**
-     * Specifies that the update method should run on the EDT.
-     * This is required because it updates the presentation.
+     * Runs [update] on the EDT because it mutates the presentation inside the swing UI tree.
      */
     override fun getActionUpdateThread(): ActionUpdateThread {
         return ActionUpdateThread.EDT
     }
-} 
+}

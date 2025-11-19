@@ -1,10 +1,15 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util
 
+/**
+ * Shared constants for output formatting, notification IDs, and detection heuristics. Lives in a
+ * Kotlin object so both production and test code can import the same values without instantiating.
+ */
 object AppConstants {
     const val NOTIFICATION_GROUP_ID = "SourceClipboardExport"
     const val FILENAME_PREFIX = "// filename: " // Default C-style comment prefix
 
     // Output format options
+    /** Supported formatting targets for [com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.SourceExportFormatter]. */
     enum class OutputFormat {
         PLAIN_TEXT,
         MARKDOWN,

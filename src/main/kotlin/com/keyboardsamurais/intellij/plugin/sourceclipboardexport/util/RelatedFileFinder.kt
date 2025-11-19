@@ -18,6 +18,10 @@ import com.intellij.psi.search.FilenameIndex
 import com.intellij.psi.search.GlobalSearchScope
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.kotlin.KotlinImportResolver
 
+/**
+ * Heuristic heavy-lifter responsible for locating files related to a selection (tests, configs,
+ * imports, recent changes, etc.). Split out so multiple actions can share consistent behavior.
+ */
 object RelatedFileFinder {
     private val LOG = Logger.getInstance(RelatedFileFinder::class.java)
 
@@ -35,6 +39,10 @@ object RelatedFileFinder {
         val importsMaxPerFile: Int = intProp("sce.imports.maxPerFile", Int.MAX_VALUE)
     }
     
+    /**
+     * Discovers test files that match the given source file using language-aware naming
+     * conventions (JUnit, Jest, pytest, etc.) plus folder heuristics like `__tests__`.
+     */
     fun findTestFiles(project: Project, sourceFile: VirtualFile): List<VirtualFile> {
         if (sourceFile.isDirectory) return emptyList()
         
@@ -129,6 +137,10 @@ object RelatedFileFinder {
         }
     }
     
+    /**
+     * Returns configuration files that are relevant for the source file's language (package.json,
+     * tsconfig, application.yml, Dockerfile, etc.). Used by the "Include Configuration" action.
+     */
     fun findConfigFiles(project: Project, sourceFile: VirtualFile): List<VirtualFile> {
         val configFiles = mutableListOf<VirtualFile>()
         val projectRoot = ReadAction.compute<VirtualFile?, Exception> {
@@ -189,6 +201,10 @@ object RelatedFileFinder {
         return configFiles.distinct()
     }
     
+    /**
+     * Scans the project VFS for files whose last-modified timestamp is within the past [hours].
+     * Does not require VCS data, making it fast.
+     */
     fun findRecentChanges(project: Project, hours: Int = 24): List<VirtualFile> {
         val recentFiles = mutableListOf<VirtualFile>()
         val cutoffTime = System.currentTimeMillis() - (hours * 60 * 60 * 1000)
@@ -207,6 +223,10 @@ object RelatedFileFinder {
         return recentFiles
     }
     
+    /**
+     * Returns other files that live in the same directory/package as [sourceFile]. For JS/TS
+     * components we include CSS modules or barrel files as well.
+     */
     fun findCurrentPackageFiles(sourceFile: VirtualFile): List<VirtualFile> {
         val packageFiles = mutableListOf<VirtualFile>()
         val parent = sourceFile.parent ?: return emptyList()
@@ -258,6 +278,7 @@ object RelatedFileFinder {
         return packageFiles.distinct()
     }
     
+    /** Resolves direct imports/requires for a file via PSI + text heuristics. */
     fun findDirectImports(project: Project, sourceFile: VirtualFile): List<VirtualFile> {
         if (sourceFile.isDirectory) return emptyList()
         
@@ -268,6 +289,10 @@ object RelatedFileFinder {
         return findImportedFiles(project, psiFile, transitive = false)
     }
     
+    /**
+     * Computes the transitive closure of imports starting from [sourceFile], bounded by the
+     * configured max depth and max results per file.
+     */
     fun findTransitiveImports(project: Project, sourceFile: VirtualFile): List<VirtualFile> {
         if (sourceFile.isDirectory) return emptyList()
         

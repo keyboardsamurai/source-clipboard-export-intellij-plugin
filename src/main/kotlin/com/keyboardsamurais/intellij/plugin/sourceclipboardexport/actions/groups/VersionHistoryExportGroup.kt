@@ -8,6 +8,10 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.Action
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportLastCommitAction
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportRecentChangesAction
 
+/**
+ * Groups VCS-aware export actions (recent changes and last commit) so the popup mirrors the mental
+ * model users already have for history-based context.
+ */
 class VersionHistoryExportGroup : ActionGroup("Version History", "Export based on version control", null) {
     
     private val exportRecentChangesAction = ExportRecentChangesAction()
@@ -28,6 +32,7 @@ class VersionHistoryExportGroup : ActionGroup("Version History", "Export based o
         e.presentation.isEnabledAndVisible = ActionUpdateSupport.hasProjectAndFiles(e)
     }
     
+    /** Runs off the EDT because `update` inspects the current selection. */
     override fun getActionUpdateThread(): ActionUpdateThread {
         return ActionUpdateThread.BGT
     }

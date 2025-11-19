@@ -3,7 +3,7 @@ package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core
 import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
 
-/** Thread-safe container for export statistics. */
+/** Thread-safe container for exporter counters. Incremented from multiple coroutines. */
 class ExportStatistics {
     val fileCount = AtomicInteger(0) // Total files considered/processed (used for limit)
     val processedFileCount = AtomicInteger(0)

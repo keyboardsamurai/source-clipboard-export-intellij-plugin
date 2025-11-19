@@ -6,6 +6,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.gitignore.HierarchicalGitignoreParser
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.FileUtils
 
+/** Rejects files whose size exceeds the configured kilobyte limit. */
 class SizeFilter(private val maxFileSizeKb: Int) : ExportFilter {
     private val logger = Logger.getInstance(SizeFilter::class.java)
 
@@ -24,6 +25,7 @@ class SizeFilter(private val maxFileSizeKb: Int) : ExportFilter {
     }
 }
 
+/** Skips files/directories whose names appear in the user-maintained ignore list. */
 class IgnoredNameFilter(private val ignoredNames: List<String>) : ExportFilter {
     private val logger = Logger.getInstance(IgnoredNameFilter::class.java)
 
@@ -41,6 +43,7 @@ class IgnoredNameFilter(private val ignoredNames: List<String>) : ExportFilter {
     }
 }
 
+/** Includes only files whose extension matches one of the configured filters. */
 class FilenameFilter(private val filters: List<String>) : ExportFilter {
     private val logger = Logger.getInstance(FilenameFilter::class.java)
 
@@ -66,6 +69,7 @@ class FilenameFilter(private val filters: List<String>) : ExportFilter {
     }
 }
 
+/** Applies repository `.gitignore` rules via [HierarchicalGitignoreParser]. */
 class GitignoreFilter(
         private val parser: HierarchicalGitignoreParser,
         private val explicitFiles: Set<VirtualFile>
@@ -99,6 +103,7 @@ class GitignoreFilter(
     }
 }
 
+/** Fast extension-based binary detector used early in the pipeline. */
 class KnownBinaryFilter : ExportFilter {
     private val logger = Logger.getInstance(KnownBinaryFilter::class.java)
 
@@ -118,6 +123,7 @@ class KnownBinaryFilter : ExportFilter {
     }
 }
 
+/** Slower heuristic that inspects file content to detect binary data. */
 class ContentBinaryFilter : ExportFilter {
     private val logger = Logger.getInstance(ContentBinaryFilter::class.java)
 

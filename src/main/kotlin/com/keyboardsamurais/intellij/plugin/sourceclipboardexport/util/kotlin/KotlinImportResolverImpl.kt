@@ -9,10 +9,14 @@ import com.intellij.psi.search.GlobalSearchScope
 import org.jetbrains.kotlin.psi.KtFile
 
 /**
- * Kotlin PSI implementation. Loaded only when the Kotlin plugin is present
- * via optional dependency in META-INF/kotlin.xml.
+ * Kotlin PSI implementation of [KotlinImportResolver]. Only loaded when the Kotlin plugin is
+ * present via optional dependency wiring.
  */
 class KotlinImportResolverImpl : KotlinImportResolver {
+    /**
+     * Scans Kotlin import directives and resolves them into physical files using [JavaPsiFacade].
+     * Wildcard imports are skipped because they would explode the result list.
+     */
     override fun resolveImports(project: Project, psiFile: PsiFile): List<VirtualFile> {
         val kf = psiFile as? KtFile ?: return emptyList()
 
@@ -28,4 +32,3 @@ class KotlinImportResolverImpl : KotlinImportResolver {
         }
     }
 }
-

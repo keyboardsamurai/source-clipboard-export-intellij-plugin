@@ -11,8 +11,9 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.ResourceF
 import kotlinx.coroutines.runBlocking
 
 /**
- * Finds resources (templates, styles, JSON configs, etc.) associated with the selected
- * source files and runs a single export that includes both the originals and the related assets.
+ * Augments the manual selection with related resources (templates, styles, JSON configs, etc.)
+ * detected by [ResourceFinder]. Useful when sharing UI features with LLMs where context such as CSS
+ * or templates materially changes the output.
  */
 class ExportWithResourcesAction : AnAction() {
     
@@ -21,6 +22,11 @@ class ExportWithResourcesAction : AnAction() {
         templatePresentation.description = "Export related HTML, CSS, and resource files"
     }
     
+    /**
+     * Resolves resource files via [ResourceFinder.findRelatedResources] and exports the union of
+     * the original selection plus any matched assets. The work happens in smart mode to ensure PSI
+     * indexes are available to the resource strategies.
+     */
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) ?: return
@@ -71,6 +77,10 @@ class ExportWithResourcesAction : AnAction() {
         }
     }
     
+    /**
+     * Displays the action only when at least one plausible source file (not folder/binary) is
+     * selected because resource heuristics rely on code-to-asset relationships.
+     */
     override fun update(e: AnActionEvent) {
         val enabled = ActionUpdateSupport.hasProjectAndFiles(e) { files ->
             files.any { !it.isDirectory && isSourceFile(it) }
@@ -98,5 +108,6 @@ class ExportWithResourcesAction : AnAction() {
         )
     }
     
+    /** Must run off the EDT because `update` checks the selection array. */
     override fun getActionUpdateThread() = com.intellij.openapi.actionSystem.ActionUpdateThread.BGT
 }

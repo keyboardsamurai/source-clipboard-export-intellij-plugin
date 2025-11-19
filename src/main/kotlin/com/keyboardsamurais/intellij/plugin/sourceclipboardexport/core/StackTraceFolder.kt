@@ -69,6 +69,12 @@ class StackTraceFolder(
     /**
      * Parses and folds the given stack trace string. Runs in read action due to PSI access.
      * Returns the original input on any unexpected error.
+     *
+     * Example:
+     * ```
+     * val folded = StackTraceFolder(project).foldStackTrace(editor.selection!!)
+     * CopyPasteManager.getInstance().setContents(StringSelection(folded))
+     * ```
      */
     fun foldStackTrace(stackTrace: String): String {
         return try {

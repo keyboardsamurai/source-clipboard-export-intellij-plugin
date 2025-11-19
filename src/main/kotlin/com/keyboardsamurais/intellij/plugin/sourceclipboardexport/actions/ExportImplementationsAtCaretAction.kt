@@ -34,8 +34,13 @@ import javax.swing.JTextArea
 import javax.swing.ListSelectionModel
 
 /**
- * Editor action to export implementations/subclasses scoped to the type at the caret.
- * If the caret cleanly selects a single type name, runs immediately; otherwise, opens a picker dialog.
+ * Editor-scoped entry point that exports implementations/subclasses related to the symbol at the
+ * caret. Integrates with IntelliJ's editor context (caret, PSI) and funnels the resulting file set
+ * into [SmartExportUtils].
+ *
+ * The action optimizes for the "caret on identifier" case by running immediately and falls back to
+ * a picker dialog for ambiguous selections. PSI work is wrapped in [ActionRunners.runSmartBackground]
+ * to respect dumb mode and to surface progress to the user.
  */
 class ExportImplementationsAtCaretAction : AnAction() {
     private val logger = Logger.getInstance(ExportImplementationsAtCaretAction::class.java)
@@ -45,6 +50,11 @@ class ExportImplementationsAtCaretAction : AnAction() {
         templatePresentation.description = "Export implementations/subclasses for the type at caret"
     }
 
+    /**
+     * Resolves the symbol under the caret (or via picker) and triggers an implementation search.
+     *
+     * @param e action event containing `CommonDataKeys.EDITOR` and `CommonDataKeys.PSI_FILE`
+     */
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val editor = e.getData(CommonDataKeys.EDITOR) ?: return
@@ -86,6 +96,16 @@ class ExportImplementationsAtCaretAction : AnAction() {
         runForSymbols(project, selectedFile, listOf(base), includeAnonymous = dlg.includeAnonymous(), includeTest = dlg.includeTests())
     }
 
+    /**
+     * Runs the expensive implementation search with a progress indicator, merges the resulting
+     * files with the base file, and hands the list to [SmartExportUtils].
+     *
+     * @param project IntelliJ project needed for PSI access
+     * @param selectedFile the file hosting the caret; always exported even if no implementations are found
+     * @param bases symbols to search for (interfaces/classes)
+     * @param includeAnonymous whether anonymous/object implementations are allowed
+     * @param includeTest whether test sources can appear in the result
+     */
     private fun runForSymbols(
         project: Project,
         selectedFile: VirtualFile,
@@ -148,6 +168,12 @@ class ExportImplementationsAtCaretAction : AnAction() {
         }
     }
 
+    /**
+     * Attempts to resolve an unambiguous type at the caret by checking Kotlin/Java PSI and, as a
+     * fallback, short-name search through [com.intellij.psi.search.PsiShortNamesCache].
+     *
+     * @return the resolved [PsiClass] or `null` when user input is ambiguous
+     */
     private fun resolveCleanSymbolAtCaret(psiFile: PsiFile, editor: Editor): PsiClass? {
         return ReadAction.compute<PsiClass?, Exception> {
             val caret = editor.caretModel.primaryCaret
@@ -260,6 +286,10 @@ class ExportImplementationsAtCaretAction : AnAction() {
         }
     }
 
+    /**
+     * Enables the action only when an editor/PSI file is available and the current file extension
+     * is JVM-friendly.
+     */
     override fun update(e: AnActionEvent) {
         val project = e.project
         val editor = e.getData(CommonDataKeys.EDITOR)
@@ -272,9 +302,14 @@ class ExportImplementationsAtCaretAction : AnAction() {
         return ext in setOf("java", "kt", "kts")
     }
 
+    /** Resolving editor/PSI context can be slow, so `update` is run on BGT. */
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 }
 
+/**
+ * Lightweight dialog that surfaces `DebugTracer` output to users after complex exports. Allows
+ * users to copy diagnostic data when reporting issues.
+ */
 class DebugOutputDialog(project: Project, private val text: String) : DialogWrapper(project) {
     init {
         title = "Implementations Debug Output"

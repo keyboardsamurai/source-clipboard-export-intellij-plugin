@@ -27,6 +27,14 @@ class SourceExportFormatter(
         val excludedByGitignoreCount: Int
     )
 
+    /**
+     * Builds the final export string by optionally injecting directory trees or repository summary
+     * text and formatting each file according to [settings.outputFormat].
+     *
+     * @param selectedFiles original selection (needed for repository stats)
+     * @param entries file entries with already-prefixed content
+     * @param stats counters returned from [FileTraverser]
+     */
     fun buildContent(
         selectedFiles: Array<VirtualFile>,
         entries: List<FileEntry>,

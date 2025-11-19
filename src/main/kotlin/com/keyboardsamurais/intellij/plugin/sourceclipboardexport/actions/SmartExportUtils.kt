@@ -14,8 +14,28 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.Notificat
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.StringUtils
 import java.awt.datatransfer.StringSelection
 
+/**
+ * Central coordinator that turns a set of [VirtualFile]s into clipboard-ready text. Handles
+ * clipboard interaction, notifications, export history tracking, and background progress dialogs so
+ * action classes can stay lean.
+ */
 object SmartExportUtils {
     
+    /**
+     * Performs a sorted, de-duplicated export of the provided files. When the IDE is available the
+     * work runs under a modal progress indicator and results are copied to the clipboard and
+     * recorded in [ExportHistory]. In unit-test mode the export runs synchronously without touching
+     * global services.
+     *
+     * Example:
+     * ```
+     * val files = arrayOf(fileUnderCaret, relatedTest)
+     * SmartExportUtils.exportFiles(project, files)
+     * ```
+     *
+     * @param project owning project; may be used to resolve settings and show notifications
+     * @param files array of `VirtualFile`s to export
+     */
     fun exportFiles(project: Project, files: Array<VirtualFile>) {
         // Deduplicate and sort for deterministic ordering
         val ordered = files.toList().distinctBy { it.path }.sortedBy { it.path }

@@ -15,6 +15,10 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.Notificat
  */
 class ExportNotificationPresenter(private val project: Project) {
 
+        /**
+         * Shows a success balloon with size/token stats and a summary of excluded files, ensuring
+         * users understand how filters affected the export.
+         */
         fun showSuccessNotification(
                 result: SourceExporter.ExportResult,
                 formattedSize: String,
@@ -43,6 +47,7 @@ class ExportNotificationPresenter(private val project: Project) {
                 )
         }
 
+        /** Simpler success message used by tests and legacy code paths. */
         fun showSimpleSuccessNotification(
                 fileCount: Int,
                 formattedSize: String,
@@ -58,6 +63,10 @@ class ExportNotificationPresenter(private val project: Project) {
                 )
         }
 
+        /**
+         * Warns the user when the configured file-count limit stopped the exporter and offers an
+         * action to open the settings dialog directly.
+         */
         fun showLimitReachedNotification(limit: Int) {
                 val notification =
                         NotificationUtils.createNotification(
@@ -85,6 +94,10 @@ class ExportNotificationPresenter(private val project: Project) {
                 notification.notify(project)
         }
 
+        /**
+         * Surfaces a warning when no content made it through the filters, highlighting the most
+         * likely causes.
+         */
         fun showEmptyContentWarning(settings: SourceClipboardExportSettings.State) {
                 NotificationUtils.showNotification(
                         project,
@@ -98,6 +111,7 @@ class ExportNotificationPresenter(private val project: Project) {
                 )
         }
 
+        /** Indicates the background progress task was cancelled. */
         fun showCancelledNotification() {
                 NotificationUtils.showNotification(
                         project,
@@ -107,6 +121,7 @@ class ExportNotificationPresenter(private val project: Project) {
                 )
         }
 
+        /** Fatal error balloon for unexpected exceptions during export. */
         fun showErrorNotification(message: String) {
                 NotificationUtils.showNotification(
                         project,
@@ -116,6 +131,7 @@ class ExportNotificationPresenter(private val project: Project) {
                 )
         }
 
+        /** Error balloon used when the IDE cannot write to the clipboard. */
         fun showClipboardErrorNotification(message: String) {
                 NotificationUtils.showNotification(
                         project,
@@ -125,6 +141,7 @@ class ExportNotificationPresenter(private val project: Project) {
                 )
         }
 
+        /** Tells the diff action user that there is no previous export to compare against. */
         fun showNoPreviousExportNotification() {
                 NotificationUtils.showNotification(
                         project,
@@ -134,6 +151,7 @@ class ExportNotificationPresenter(private val project: Project) {
                 )
         }
 
+        /** Confirms that the diff summary was copied to the clipboard. */
         fun showDiffCopiedNotification() {
                 NotificationUtils.showNotification(
                         project,
@@ -143,6 +161,7 @@ class ExportNotificationPresenter(private val project: Project) {
                 )
         }
 
+        /** Used when "export changes only" doesn't produce any new files. */
         fun showNoChangesNotification() {
                 NotificationUtils.showNotification(
                         project,
@@ -152,6 +171,10 @@ class ExportNotificationPresenter(private val project: Project) {
                 )
         }
 
+        /**
+         * Builds an HTML summary list that outlines how many files were processed/excluded and why.
+         * Embedded into the main success balloon.
+         */
         private fun buildOperationSummaryHtml(
                 result: SourceExporter.ExportResult,
                 settings: SourceClipboardExportSettings.State

@@ -11,6 +11,10 @@ import com.intellij.openapi.project.Project
     name = "ExportHistory",
     storages = [Storage("exportHistory.xml")]
 )
+/**
+ * Project-level service that records the last few exports so we can show diff dialogs or let users
+ * recover previously shared bundles.
+ */
 class ExportHistory : PersistentStateComponent<ExportHistory.State> {
     
     data class ExportEntry(
@@ -35,6 +39,10 @@ class ExportHistory : PersistentStateComponent<ExportHistory.State> {
         myState = state
     }
     
+    /**
+     * Records a new export at the head of the list, trimming to [State.maxEntries]. Called by
+     * export actions after successful clipboard writes.
+     */
     fun addExport(fileCount: Int, sizeBytes: Int, tokens: Int, filePaths: List<String>) {
         val entry = ExportEntry(
             timestamp = System.currentTimeMillis(),
@@ -53,10 +61,12 @@ class ExportHistory : PersistentStateComponent<ExportHistory.State> {
         }
     }
     
+    /** Returns a snapshot of the recorded exports in newest-first order. */
     fun getRecentExports(): List<ExportEntry> {
         return myState.exports.toList()
     }
     
+    /** Removes all recorded exports. Useful for tests. */
     fun clearHistory() {
         myState.exports.clear()
     }
@@ -72,6 +82,7 @@ class ExportHistory : PersistentStateComponent<ExportHistory.State> {
     }
     
     companion object {
+        /** Convenience accessor for callers that only have a [Project] instance. */
         fun getInstance(project: Project): ExportHistory {
             return project.getService(ExportHistory::class.java)
         }

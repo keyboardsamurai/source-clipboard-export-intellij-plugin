@@ -9,6 +9,10 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.RelatedFileFinder
 
+/**
+ * Resolves direct imports for the selected files and exports the union. Acts as the simpler
+ * counterpart to [ExportWithTransitiveImportsAction].
+ */
 class ExportWithDirectImportsAction : AnAction() {
     
     init {
@@ -19,6 +23,10 @@ class ExportWithDirectImportsAction : AnAction() {
     
     private val logger = Logger.getInstance(ExportWithDirectImportsAction::class.java)
     
+    /**
+     * Runs [RelatedFileFinder.findDirectImports] via [RelatedFileExportRunner] and merges the
+     * result with the original selection.
+     */
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) ?: return
@@ -52,10 +60,12 @@ class ExportWithDirectImportsAction : AnAction() {
         }
     }
     
+    /** Reuses the shared helper so the action only shows up when files are selected. */
     override fun update(e: AnActionEvent) {
         e.presentation.isEnabledAndVisible = ActionUpdateSupport.hasProjectAndFiles(e)
     }
     
+    /** Background thread is required because `update` inspects file selection. */
     override fun getActionUpdateThread(): ActionUpdateThread {
         return ActionUpdateThread.BGT
     }

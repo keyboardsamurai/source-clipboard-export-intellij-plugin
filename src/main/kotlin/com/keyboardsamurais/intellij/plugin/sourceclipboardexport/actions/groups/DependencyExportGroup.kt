@@ -11,6 +11,11 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.Export
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportWithDirectImportsAction
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportWithTransitiveImportsAction
 
+/**
+ * Dependency-focused submenu containing outgoing imports, incoming dependents, and the combined
+ * bidirectional variant. Improves discoverability for users who want to follow call chains or
+ * module graphs while exporting.
+ */
 class DependencyExportGroup : ActionGroup("Dependencies", "Export with dependency relationships", null) {
     
     private val exportWithDirectImportsAction = ExportWithDirectImportsAction()
@@ -40,6 +45,7 @@ class DependencyExportGroup : ActionGroup("Dependencies", "Export with dependenc
         e.presentation.isEnabledAndVisible = ActionUpdateSupport.hasProjectAndFiles(e)
     }
     
+    /** Requires BGT since `update` touches VFS. */
     override fun getActionUpdateThread(): ActionUpdateThread {
         return ActionUpdateThread.BGT
     }

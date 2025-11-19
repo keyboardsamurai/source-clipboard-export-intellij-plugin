@@ -22,10 +22,20 @@ import kotlinx.coroutines.runBlocking
 import java.awt.datatransfer.StringSelection
 import javax.swing.JOptionPane
 
+/**
+ * Baseline action that exports exactly what the user selected (files and folders). All other
+ * actions eventually delegate to the same core exporter, so this implementation highlights the
+ * default clipboard UX, notifications, and history updates.
+ */
 class DumpFolderContentsAction : AnAction() {
 
     private val logger = Logger.getInstance(DumpFolderContentsAction::class.java)
 
+    /**
+     * Validates the selection, optionally warns when the operation is large, then drives
+     * [SourceExporter] to completion within a [ProgressManager] task. Notifications are delegated
+     * to [ExportNotificationPresenter] to keep UI code centralized.
+     */
     override fun actionPerformed(e: AnActionEvent) {
         logger.info("Action initiated: DumpFolderContentsAction")
         val project = e.project
@@ -106,6 +116,10 @@ class DumpFolderContentsAction : AnAction() {
                 )
     }
 
+    /**
+     * Legacy helper used by older tests; copies raw content to the clipboard and records the
+     * export. Prefer the overload that accepts [SourceExporter.ExportResult].
+     */
     private fun copyToClipboard(
             text: String,
             fileCount: Int,
@@ -147,7 +161,10 @@ class DumpFolderContentsAction : AnAction() {
         }
     }
 
-    // Overload that accepts full result to include a richer summary in notification
+    /**
+     * Overload that accepts the full [SourceExporter.ExportResult] so we can surface richer stats
+     * (excluded counts, included paths) in notifications and history entries.
+     */
     private fun copyToClipboard(
             text: String,
             result: SourceExporter.ExportResult,
@@ -187,10 +204,10 @@ class DumpFolderContentsAction : AnAction() {
         }
     }
 
-    // Backward-compatible overload for tests expecting the old signature
-    // Note: Tests should be updated to mock the presenter or use the new structure if possible.
-    // But for now, we keep this and instantiate a temporary presenter if needed, or just use
-    // NotificationUtils directly if project is null (unlikely in tests)
+    /**
+     * Backwards-compatible overload for legacy tests that still expect the original signature. It
+     * simply delegates to the richer implementation above.
+     */
     @Suppress("unused")
     private fun copyToClipboard(
             text: String,
@@ -203,6 +220,10 @@ class DumpFolderContentsAction : AnAction() {
         copyToClipboard(text, fileCount, project, paths, presenter)
     }
 
+    /**
+     * Shows the action only when a project and selection exist; avoids the default action group
+     * showing dead entries when invoked from places like the welcome screen.
+     */
     override fun update(e: AnActionEvent) {
         val project = e.project
         val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)

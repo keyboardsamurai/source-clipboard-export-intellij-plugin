@@ -19,7 +19,11 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 
-/** Handles recursive file traversal and filtering. */
+/**
+ * Recursively walks the selected roots, applying both traversal filters (gitignore, ignored names)
+ * and inclusion filters (size, binary detection). Uses coroutines for concurrency while respecting
+ * IntelliJ's read-access requirements.
+ */
 class FileTraverser(
         private val project: Project,
         private val stats: ExportStatistics,
@@ -29,6 +33,10 @@ class FileTraverser(
 ) {
     private val logger = Logger.getInstance(FileTraverser::class.java)
 
+    /**
+     * Walks each root, invoking [onFileFound] for every file that survives all filters. Traversal
+     * stops early when [fileCountLimit] is reached or when the coroutine scope is cancelled.
+     */
     @OptIn(ExperimentalCoroutinesApi::class)
     suspend fun traverse(
             roots: Array<VirtualFile>,

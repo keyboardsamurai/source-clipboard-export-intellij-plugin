@@ -22,6 +22,10 @@ class ExportPreviewGenerator {
         val ignoredNames: List<String>
     )
 
+    /**
+     * Builds a string that mimics the exporter output under the provided [PreviewSettings]. Used by
+     * the settings dialog to show a live preview without touching real files.
+     */
     fun buildPreview(settings: PreviewSettings): String {
         val builder = StringBuilder()
         builder.append("Export Preview with Current Settings:\n")
