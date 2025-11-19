@@ -1,6 +1,9 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.ui
 
+import com.intellij.notification.Notification
+import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationType
+import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceClipboardExportSettings
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.SourceExporter
@@ -8,7 +11,10 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.Notificat
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
+import io.mockk.mockkStatic
+import io.mockk.slot
 import io.mockk.unmockkObject
+import io.mockk.unmockkStatic
 import io.mockk.verify
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -190,6 +196,33 @@ class ExportNotificationPresenterTest {
     }
 
     @Test
+    fun `showLimitReachedNotification action opens settings`() {
+        val notification = mockk<Notification>(relaxed = true)
+        every { NotificationUtils.createNotification(any(), any(), any()) } returns notification
+        val actionSlot = slot<NotificationAction>()
+        every { notification.addAction(capture(actionSlot)) } returns notification
+        val showSettings = mockk<ShowSettingsUtil>(relaxed = true)
+        mockkStatic(ShowSettingsUtil::class)
+        every { ShowSettingsUtil.getInstance() } returns showSettings
+
+        try {
+            presenter.showLimitReachedNotification(50)
+
+            actionSlot.captured.actionPerformed(mockk(relaxed = true), notification)
+
+            verify {
+                showSettings.showSettingsDialog(
+                        project,
+                        "com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceClipboardExportConfigurable"
+                )
+                notification.expire()
+            }
+        } finally {
+            unmockkStatic(ShowSettingsUtil::class)
+        }
+    }
+
+    @Test
     fun `showNoPreviousExportNotification`() {
         // When
         presenter.showNoPreviousExportNotification()
@@ -233,6 +266,79 @@ class ExportNotificationPresenterTest {
                     "No Changes",
                     "No new files to export",
                     NotificationType.INFORMATION
+            )
+        }
+    }
+
+    @Test
+    fun `showSimpleSuccessNotification relays stats`() {
+        presenter.showSimpleSuccessNotification(7, "10.0KB", "123")
+
+        verify {
+            NotificationUtils.showNotification(
+                    project,
+                    "Content Copied",
+                    "Copied 7 files (10.0KB, ~123 tokens)",
+                    NotificationType.INFORMATION
+            )
+        }
+    }
+
+    @Test
+    fun `showEmptyContentWarning enumerates likely causes`() {
+        every { settings.maxFileSizeKb } returns 256
+        every { settings.ignoredNames } returns mutableListOf("build", "out", "dist", "tmp")
+
+        presenter.showEmptyContentWarning(settings)
+
+        verify {
+            NotificationUtils.showNotification(
+                    project,
+                    "Warning",
+                    match { it.contains("No content to copy") && it.contains("256KB") && it.contains("build, out, dist") },
+                    NotificationType.WARNING
+            )
+        }
+    }
+
+    @Test
+    fun `showCancelledNotification emits warning`() {
+        presenter.showCancelledNotification()
+
+        verify {
+            NotificationUtils.showNotification(
+                    project,
+                    "Export Cancelled",
+                    "The operation was cancelled",
+                    NotificationType.WARNING
+            )
+        }
+    }
+
+    @Test
+    fun `showErrorNotification emits error balloon`() {
+        presenter.showErrorNotification("boom")
+
+        verify {
+            NotificationUtils.showNotification(
+                    project,
+                    "Export Error",
+                    "Failed to export source: boom",
+                    NotificationType.ERROR
+            )
+        }
+    }
+
+    @Test
+    fun `showClipboardErrorNotification surfaces copy failure`() {
+        presenter.showClipboardErrorNotification("clipboard blocked")
+
+        verify {
+            NotificationUtils.showNotification(
+                    project,
+                    "Error",
+                    "Failed to copy to clipboard: clipboard blocked",
+                    NotificationType.ERROR
             )
         }
     }
