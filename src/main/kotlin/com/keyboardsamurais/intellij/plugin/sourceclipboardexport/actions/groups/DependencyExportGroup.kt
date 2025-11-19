@@ -4,8 +4,8 @@ import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.Separator
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ActionUpdateSupport
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportBidirectionalDependenciesAction
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportDependentsAction
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportWithDirectImportsAction
@@ -37,9 +37,7 @@ class DependencyExportGroup : ActionGroup("Dependencies", "Export with dependenc
     }
     
     override fun update(e: AnActionEvent) {
-        val project = e.project
-        val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)
-        e.presentation.isEnabledAndVisible = project != null && !selectedFiles.isNullOrEmpty()
+        e.presentation.isEnabledAndVisible = ActionUpdateSupport.hasProjectAndFiles(e)
     }
     
     override fun getActionUpdateThread(): ActionUpdateThread {

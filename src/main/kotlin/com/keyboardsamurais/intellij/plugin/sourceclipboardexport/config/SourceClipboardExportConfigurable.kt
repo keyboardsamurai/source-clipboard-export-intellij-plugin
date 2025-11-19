@@ -445,129 +445,22 @@ class SourceClipboardExportConfigurable : Configurable {
     }
 
     private fun showExportPreview() {
-        val preview = StringBuilder()
-        preview.append("Export Preview with Current Settings:\n")
-        preview.append("=====================================\n\n")
-        
-        // Show current settings
-        preview.append("Settings:\n")
-        preview.append("- Maximum files: ${fileCountSpinner?.value}\n")
-        preview.append("- Maximum file size: ${maxFileSizeSpinner?.value} KB\n")
-        preview.append("- Include path prefix: ${includePathPrefixCheckBox?.isSelected}\n")
-        preview.append("- Include line numbers: ${includeLineNumbersCheckBox?.isSelected}\n")
-        preview.append("- Include directory structure: ${includeDirectoryStructureCheckBox?.isSelected}\n")
-        preview.append("- Include files in structure: ${includeFilesInStructureCheckBox?.isSelected}\n")
-        preview.append("- Include repository summary: ${includeRepositorySummaryCheckBox?.isSelected}\n")
-        
-        val formatIndex = outputFormatComboBox?.selectedIndex ?: 0
-        val formatName = when (formatIndex) {
-            0 -> "Plain Text"
-            1 -> "Markdown"
-            2 -> "XML"
-            else -> "Plain Text"
-        }
-        preview.append("- Output format: $formatName\n\n")
-        
-        // Show active filters
-        val filters = (0 until (filtersTableModel?.rowCount ?: 0)).map {
-            filtersTableModel?.getValueAt(it, 0) as? String ?: ""
-        }.filter { it.isNotEmpty() }
-        
-        if (filters.isEmpty()) {
-            preview.append("Filters: None (all non-binary files will be included)\n")
-        } else {
-            preview.append("Filters: ${filters.joinToString(", ")}\n")
-        }
-        
-        // Show ignored names
-        val ignoredNames = ignoredNamesTextArea?.text?.lines()
-            ?.map { it.trim() }
-            ?.filter { it.isNotEmpty() } ?: emptyList()
-        
-        if (ignoredNames.isNotEmpty()) {
-            preview.append("Ignored names: ${ignoredNames.joinToString(", ")}\n")
-        }
-        
-        preview.append("\n")
-        preview.append("Sample Output Preview:\n")
-        preview.append("---------------------\n")
-        
-        // Show sample based on format
-        when (formatIndex) {
-            0 -> { // Plain Text
-                if (includeDirectoryStructureCheckBox?.isSelected == true) {
-                    preview.append("project/\n")
-                    preview.append("├── src/\n")
-                    preview.append("│   └── Example.kt\n")
-                    preview.append("└── build.gradle\n\n")
-                }
-                if (includeRepositorySummaryCheckBox?.isSelected == true) {
-                    preview.append("Repository Summary:\n")
-                    preview.append("Total files processed: 2\n")
-                    preview.append("Total size: 3.5 KB\n\n")
-                }
-                if (includePathPrefixCheckBox?.isSelected == true) {
-                    preview.append("// filename: src/Example.kt\n")
-                }
-                if (includeLineNumbersCheckBox?.isSelected == true) {
-                    preview.append("1: class Example {\n")
-                    preview.append("2:     fun hello() = \"Hello\"\n")
-                    preview.append("3: }\n")
-                } else {
-                    preview.append("class Example {\n")
-                    preview.append("    fun hello() = \"Hello\"\n")
-                    preview.append("}\n")
-                }
-            }
-            1 -> { // Markdown
-                if (includeDirectoryStructureCheckBox?.isSelected == true) {
-                    preview.append("```\n")
-                    preview.append("project/\n")
-                    preview.append("├── src/\n")
-                    preview.append("│   └── Example.kt\n")
-                    preview.append("└── build.gradle\n")
-                    preview.append("```\n\n")
-                }
-                preview.append("### src/Example.kt\n\n")
-                preview.append("```kotlin\n")
-                if (includeLineNumbersCheckBox?.isSelected == true) {
-                    preview.append("1: class Example {\n")
-                    preview.append("2:     fun hello() = \"Hello\"\n")
-                    preview.append("3: }\n")
-                } else {
-                    preview.append("class Example {\n")
-                    preview.append("    fun hello() = \"Hello\"\n")
-                    preview.append("}\n")
-                }
-                preview.append("```\n")
-            }
-            2 -> { // XML
-                preview.append("<export>\n")
-                if (includeRepositorySummaryCheckBox?.isSelected == true) {
-                    preview.append("  <summary>\n")
-                    preview.append("    <totalFiles>2</totalFiles>\n")
-                    preview.append("    <totalSize>3584</totalSize>\n")
-                    preview.append("  </summary>\n")
-                }
-                preview.append("  <file path=\"src/Example.kt\">\n")
-                preview.append("    <content><![CDATA[\n")
-                if (includeLineNumbersCheckBox?.isSelected == true) {
-                    preview.append("1: class Example {\n")
-                    preview.append("2:     fun hello() = \"Hello\"\n")
-                    preview.append("3: }\n")
-                } else {
-                    preview.append("class Example {\n")
-                    preview.append("    fun hello() = \"Hello\"\n")
-                    preview.append("}\n")
-                }
-                preview.append("    ]]></content>\n")
-                preview.append("  </file>\n")
-                preview.append("</export>\n")
-            }
-        }
-        
-        // Show preview in a dialog
-        val textArea = JBTextArea(preview.toString()).apply {
+        val previewSettings = ExportPreviewGenerator.PreviewSettings(
+            maxFiles = fileCountSpinner?.value as? Int ?: 0,
+            maxFileSizeKb = maxFileSizeSpinner?.value as? Int ?: 0,
+            includePathPrefix = includePathPrefixCheckBox?.isSelected ?: false,
+            includeLineNumbers = includeLineNumbersCheckBox?.isSelected ?: false,
+            includeDirectoryStructure = includeDirectoryStructureCheckBox?.isSelected ?: false,
+            includeFilesInStructure = includeFilesInStructureCheckBox?.isSelected ?: false,
+            includeRepositorySummary = includeRepositorySummaryCheckBox?.isSelected ?: false,
+            outputFormat = selectedOutputFormat(),
+            filters = currentFilters(),
+            ignoredNames = currentIgnoredNames()
+        )
+
+        val previewText = ExportPreviewGenerator().buildPreview(previewSettings)
+
+        val textArea = JBTextArea(previewText).apply {
             isEditable = false
             font = UIManager.getFont("EditorPane.font") ?: font
         }
@@ -581,6 +474,29 @@ class SourceClipboardExportConfigurable : Configurable {
             "Export Preview",
             JOptionPane.INFORMATION_MESSAGE
         )
+    }
+
+    private fun selectedOutputFormat(): OutputFormat {
+        return when (outputFormatComboBox?.selectedIndex ?: 0) {
+            1 -> OutputFormat.MARKDOWN
+            2 -> OutputFormat.XML
+            else -> OutputFormat.PLAIN_TEXT
+        }
+    }
+
+    private fun currentFilters(): List<String> {
+        val rows = filtersTableModel?.rowCount ?: 0
+        if (rows == 0) return emptyList()
+        return (0 until rows).mapNotNull { idx ->
+            (filtersTableModel?.getValueAt(idx, 0) as? String)?.takeIf { it.isNotBlank() }
+        }
+    }
+
+    private fun currentIgnoredNames(): List<String> {
+        return ignoredNamesTextArea?.text?.lines()
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?: emptyList()
     }
 
     companion object {

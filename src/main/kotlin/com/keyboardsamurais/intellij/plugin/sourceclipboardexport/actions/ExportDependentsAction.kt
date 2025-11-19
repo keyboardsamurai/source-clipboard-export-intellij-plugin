@@ -28,12 +28,9 @@ class ExportDependentsAction : AnAction() {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     override fun update(e: AnActionEvent) {
-        val project = e.project
-        val files = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)
-        
-        e.presentation.isEnabledAndVisible = project != null && 
-            !files.isNullOrEmpty() && 
+        e.presentation.isEnabledAndVisible = ActionUpdateSupport.hasProjectAndFiles(e) { files ->
             files.any { !it.isDirectory }
+        }
     }
 
     override fun actionPerformed(e: AnActionEvent) {

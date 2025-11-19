@@ -27,20 +27,21 @@ class SourceClipboardExportSettings : PersistentStateComponent<SourceClipboardEx
         var includeRepositorySummary: Boolean = false
         var includeLineNumbers: Boolean = true  // Enable by default for better AI context
         var outputFormat: OutputFormat = OutputFormat.PLAIN_TEXT
+        var stackTraceSettings: StackTraceSettings = StackTraceSettings()
+    }
 
-        // Stack trace folding settings
-        var stackTraceMinFramesToFold: Int = 3
-        // Head/tail context frames to keep visible around a folded block
-        var stackTraceKeepHeadFrames: Int = 1
-        var stackTraceKeepTailFrames: Int = 1
-        // Whether to include package hints in the placeholder line
-        var stackTraceIncludePackageHints: Boolean = true
-        // Whether to treat lines like "... N more" as foldable (default false to preserve canonical elision)
-        var stackTraceTreatEllipsisAsFoldable: Boolean = false
-        // Whether to append the raw, unfurled stack trace for lossless consumption by LLMs
-        var stackTraceAppendRaw: Boolean = true
-        // Customizable fold prefix lists
-        var stackTraceAlwaysFoldPrefixes: MutableList<String> = mutableListOf(
+    /**
+     * Tunable options for stack-trace folding actions. Grouped separately so the
+     * core export settings don't need to change when trace heuristics evolve.
+     */
+    data class StackTraceSettings(
+        var minFramesToFold: Int = 3,
+        var keepHeadFrames: Int = 1,
+        var keepTailFrames: Int = 1,
+        var includePackageHints: Boolean = true,
+        var treatEllipsisAsFoldable: Boolean = false,
+        var appendRaw: Boolean = true,
+        var alwaysFoldPrefixes: MutableList<String> = mutableListOf(
             "java.", "javax.", "kotlin.", "kotlinx.", "scala.",
             "jdk.", "sun.", "com.sun.",
             "org.junit.", "junit.", "org.testng.",
@@ -54,12 +55,12 @@ class SourceClipboardExportSettings : PersistentStateComponent<SourceClipboardEx
             "org.hibernate.",
             "com.zaxxer.hikari.",
             "org.postgresql."
-        )
-        var stackTraceNeverFoldPrefixes: MutableList<String> = mutableListOf(
+        ),
+        var neverFoldPrefixes: MutableList<String> = mutableListOf(
             "org.springframework.test.context.",
             "com.mycompany.myapp."
         )
-    }
+    )
 
     private var myState = State()
 

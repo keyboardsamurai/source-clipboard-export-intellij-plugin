@@ -11,7 +11,8 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.ResourceF
 import kotlinx.coroutines.runBlocking
 
 /**
- * Action to export related HTML templates, CSS files, and static resources
+ * Finds resources (templates, styles, JSON configs, etc.) associated with the selected
+ * source files and runs a single export that includes both the originals and the related assets.
  */
 class ExportWithResourcesAction : AnAction() {
     
@@ -51,24 +52,6 @@ class ExportWithResourcesAction : AnAction() {
                     val allFiles = selectedFiles.toMutableSet()
                     allFiles.addAll(resources)
                     
-                    // Categorize resources for better notification
-                    val templates = resources.filter { 
-                        it.extension?.lowercase() in setOf("html", "htm", "jsp", "ftl", "vm", "vue", "hbs", "ejs", "pug", "jade")
-                    }
-                    val styles = resources.filter {
-                        it.extension?.lowercase() in setOf("css", "scss", "sass", "less", "styl", "stylus")
-                    }
-                    val other = resources.size - templates.size - styles.size
-                    
-                    val description = buildString {
-                        append("Resources Export (")
-                        val parts = mutableListOf<String>()
-                        if (templates.isNotEmpty()) parts.add("${templates.size} template${if (templates.size > 1) "s" else ""}")
-                        if (styles.isNotEmpty()) parts.add("${styles.size} style${if (styles.size > 1) "s" else ""}")
-                        if (other > 0) parts.add("$other other")
-                        append(parts.joinToString(", "))
-                        append(")")
-                    }
                     
                     indicator.text = "Exporting ${allFiles.size} files..."
                     
@@ -89,13 +72,10 @@ class ExportWithResourcesAction : AnAction() {
     }
     
     override fun update(e: AnActionEvent) {
-        val project = e.project
-        val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)
-        
-        // Enable for any source files that might have associated resources
-        e.presentation.isEnabled = project != null && 
-                                  !selectedFiles.isNullOrEmpty() &&
-                                  selectedFiles.any { !it.isDirectory && isSourceFile(it) }
+        val enabled = ActionUpdateSupport.hasProjectAndFiles(e) { files ->
+            files.any { !it.isDirectory && isSourceFile(it) }
+        }
+        e.presentation.isEnabled = enabled
     }
     
     private fun isSourceFile(file: VirtualFile): Boolean {

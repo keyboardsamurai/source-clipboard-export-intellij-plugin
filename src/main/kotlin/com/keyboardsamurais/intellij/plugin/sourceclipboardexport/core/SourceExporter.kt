@@ -8,9 +8,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceClipboardExportSettings
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.gitignore.HierarchicalGitignoreParser
-import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.AppConstants
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.FileUtils
-import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.StringUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -25,15 +23,19 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.min
 
+/**
+ * Traverses the selected files/directories, applies ignore/filter rules, and collects
+ * normalized file contents that can later be formatted for export.
+ *
+ * Concurrency concerns (progress indicators, cancellation, gitignore parsing, etc.) stay here,
+ * while any layout/formatting decisions are delegated to [SourceExportFormatter].
+ */
 class SourceExporter(
     private val project: Project,
     private val settings: SourceClipboardExportSettings.State,
     private val indicator: ProgressIndicator
 ) {
     private val logger = Logger.getInstance(SourceExporter::class.java)
-    // Use a thread-safe list for collecting results from multiple coroutines
-    // We'll use a more efficient approach with local buffers and merging at the end
-    private val fileContents = Collections.synchronizedList(mutableListOf<String>())
     // Use AtomicIntegers for thread-safe counting from multiple coroutines
     private val fileCount = AtomicInteger(0)
     private val processedFileCount = AtomicInteger(0)
@@ -60,6 +62,8 @@ class SourceExporter(
             } ?: HierarchicalGitignoreParser(project)
         }
     }
+
+    private val formatter = SourceExportFormatter(project, settings)
 
     // Track explicitly selected top-level files to allow .gitignore override for those files only
     private var explicitTopLevelFiles: Set<VirtualFile> = emptySet()
@@ -117,9 +121,9 @@ class SourceExporter(
         // Store explicit selection for .gitignore override on files
         explicitTopLevelFiles = selectedFiles.toSet()
 
-    // Use a map to store local (path, content) entries for each coroutine
-    val localEntries = ConcurrentHashMap<Long, MutableList<Pair<String, String>>>()
-    val visitedFiles = ConcurrentHashMap.newKeySet<VirtualFile>() // Use a concurrent set for visited tracking
+        // Use a map to store local (path, content) entries for each coroutine
+        val localEntries = ConcurrentHashMap<Long, MutableList<Pair<String, String>>>()
+        val visitedFiles = ConcurrentHashMap.newKeySet<VirtualFile>() // Use a concurrent set for visited tracking
 
         coroutineScope {
             val scopeJob = SupervisorJob()
@@ -146,90 +150,23 @@ class SourceExporter(
         }
 
         // Merge all local buffers and sort deterministically by relative path
-        val mergedEntries = mutableListOf<Pair<String, String>>()
-        localEntries.values.forEach { buffer -> mergedEntries.addAll(buffer) }
-        mergedEntries.sortBy { it.first }
-
-        // Build included paths and ordered file contents
-        val includedPaths = mergedEntries.map { it.first }
-        fileContents.clear()
-        fileContents.addAll(mergedEntries.map { it.second })
+        val mergedEntries = buildMergedEntries(localEntries.values)
+        val includedPaths = mergedEntries.map { it.path }
 
         val finalProcessedCount = processedFileCount.get()
         val finalFileCount = fileCount.get()
         logger.info("Export process finished. Processed: $finalProcessedCount, Total Considered: $finalFileCount, Excluded (Filter: ${excludedByFilterCount.get()}, Size: ${excludedBySizeCount.get()}, Binary: ${excludedByBinaryContentCount.get()}, IgnoredName: ${excludedByIgnoredNameCount.get()}, Gitignore: ${excludedByGitignoreCount.get()})")
 
-        // Generate directory structure if enabled
-        val contentBuilder = StringBuilder()
+        val stats = SourceExportFormatter.ExportStats(
+            processedFileCount = finalProcessedCount,
+            excludedByFilterCount = excludedByFilterCount.get(),
+            excludedBySizeCount = excludedBySizeCount.get(),
+            excludedByBinaryContentCount = excludedByBinaryContentCount.get(),
+            excludedByIgnoredNameCount = excludedByIgnoredNameCount.get(),
+            excludedByGitignoreCount = excludedByGitignoreCount.get()
+        )
 
-        if (settings.includeDirectoryStructure) {
-            // Generate and add the directory tree from the actual included paths
-            val directoryTree = FileUtils.generateDirectoryTree(includedPaths, settings.includeFilesInStructure)
-            if (directoryTree.isNotEmpty()) {
-                contentBuilder.append(directoryTree)
-                contentBuilder.append("\n\n")
-            }
-        }
-
-        // Add repository summary if enabled
-        if (settings.includeRepositorySummary) {
-            val repositorySummary = RepositorySummary(
-                project = project,
-                selectedFiles = selectedFiles,
-                fileContents = fileContents,
-                processedFileCount = processedFileCount.get(),
-                excludedByFilterCount = excludedByFilterCount.get(),
-                excludedBySizeCount = excludedBySizeCount.get(),
-                excludedByBinaryContentCount = excludedByBinaryContentCount.get(),
-                excludedByIgnoredNameCount = excludedByIgnoredNameCount.get(),
-                excludedByGitignoreCount = excludedByGitignoreCount.get()
-            )
-            val summary = repositorySummary.generateSummary(settings.outputFormat)
-            contentBuilder.append(summary)
-        }
-
-        // Format and add file contents based on the selected output format
-        when (settings.outputFormat) {
-            AppConstants.OutputFormat.PLAIN_TEXT -> {
-                // Current default format - no changes needed
-                contentBuilder.append(fileContents.joinToString("\n"))
-            }
-            AppConstants.OutputFormat.MARKDOWN -> {
-                // Format as Markdown with code blocks, ordered by path
-                for ((path, content) in mergedEntries) {
-                    val fileName = path.substringAfterLast('/')
-                    val extension = path.substringAfterLast('.', "").lowercase()
-                    val languageHint = if (extension.isNotEmpty()) {
-                        AppConstants.MARKDOWN_LANGUAGE_HINTS[extension]
-                            ?: "text"
-                    } else {
-                        AppConstants.MARKDOWN_LANGUAGE_HINTS[fileName]
-                            ?: AppConstants.MARKDOWN_LANGUAGE_HINTS[fileName.lowercase()] ?: "text"
-                    }
-
-                    contentBuilder.append("### $path\n\n")
-                    val body = if (settings.includePathPrefix && FileUtils.hasFilenamePrefix(content)) content.substringAfter('\n') else content
-                    contentBuilder.append("```$languageHint\n")
-                    contentBuilder.append(body)
-                    contentBuilder.append("\n```\n\n")
-                }
-            }
-            AppConstants.OutputFormat.XML -> {
-                // Format as XML for machine consumption, ordered by path
-                contentBuilder.append("<files>\n")
-                for ((path, content) in mergedEntries) {
-                    val body = if (settings.includePathPrefix && FileUtils.hasFilenamePrefix(content)) content.substringAfter('\n') else content
-                    contentBuilder.append("  <file path=\"${StringUtils.escapeXml(path)}\">\n")
-                    contentBuilder.append("    <content><![CDATA[\n")
-                    contentBuilder.append(body)
-                    contentBuilder.append("\n    ]]></content>\n")
-                    contentBuilder.append("  </file>\n")
-                }
-                contentBuilder.append("</files>")
-            }
-        }
-
-        val finalContent = contentBuilder.toString()
+        val finalContent = formatter.buildContent(selectedFiles, mergedEntries, stats)
         return ExportResult(
             content = finalContent,
             processedFileCount = finalProcessedCount,
@@ -457,135 +394,153 @@ class SourceExporter(
 
         scope.ensureActive() // Check cancellation
 
-        // Check file limit again before doing expensive checks/reads
-        if (fileCount.get() >= settings.fileCount) {
+        if (hasReachedFileLimit()) {
             logger.warn("File limit reached just before processing file details: ${fileProps.name}. Skipping.")
             return
         }
 
-        // --- Further Exclusion Checks (Size, Binary, Filter) ---
-        if (ReadAction.compute<Boolean, Exception> { FileUtils.isKnownBinaryExtension(file) }) {
+        if (skipKnownBinary(file, relativePath)) return
+        if (skipOversizedFile(fileProps, relativePath)) return
+        if (skipLikelyBinary(file, relativePath)) return
+        if (skipFilteredFile(fileProps, relativePath)) return
+
+        scope.ensureActive()
+        val fileContent = readFileContentSafely(file, fileProps, relativePath) ?: return
+        val preparedContent = applyPathPrefixIfNeeded(fileContent, file, relativePath)
+        recordProcessedFile(relativePath, preparedContent, parentJob, localBuffer)
+    }
+
+    private fun buildMergedEntries(
+        buffers: Collection<MutableList<Pair<String, String>>>
+    ): MutableList<SourceExportFormatter.FileEntry> {
+        val mergedEntries = mutableListOf<SourceExportFormatter.FileEntry>()
+        buffers.forEach { buffer ->
+            buffer.forEach { entry ->
+                mergedEntries.add(SourceExportFormatter.FileEntry(entry.first, entry.second))
+            }
+        }
+        mergedEntries.sortBy { it.path }
+        return mergedEntries
+    }
+
+    private fun hasReachedFileLimit(): Boolean = fileCount.get() >= settings.fileCount
+
+    private fun skipKnownBinary(file: VirtualFile, relativePath: String): Boolean {
+        val isBinary = ReadAction.compute<Boolean, Exception> { FileUtils.isKnownBinaryExtension(file) }
+        return if (isBinary) {
             logger.info("Skipping known binary file type: $relativePath")
             excludedByBinaryContentCount.incrementAndGet()
-            return
+            true
+        } else {
+            false
         }
+    }
 
+    private fun skipOversizedFile(fileProps: FileProperties, relativePath: String): Boolean {
         val maxSizeInBytes = settings.maxFileSizeKb * 1024L
-        if (fileProps.length > maxSizeInBytes) {
+        return if (fileProps.length > maxSizeInBytes) {
             logger.info("Skipping file due to size limit (> ${settings.maxFileSizeKb} KB): $relativePath")
             excludedBySizeCount.incrementAndGet()
-            return
+            true
+        } else {
+            false
         }
+    }
 
-        // Deeper binary check
+    private fun skipLikelyBinary(file: VirtualFile, relativePath: String): Boolean {
         val isBinary = try {
-            ReadAction.compute<Boolean, Exception> {
-                FileUtils.isLikelyBinaryContent(file)
-            }
+            ReadAction.compute<Boolean, Exception> { FileUtils.isLikelyBinaryContent(file) }
         } catch (e: Exception) {
             logger.warn("Failed deep binary check for $relativePath, assuming binary.", e)
-            true // Assume binary if check fails
+            true
         }
         if (isBinary) {
             logger.info("Skipping likely binary file (content check): $relativePath")
             excludedByBinaryContentCount.incrementAndGet()
-            return
         }
+        return isBinary
+    }
 
-
-        // Filter check
-        if (settings.areFiltersEnabled && settings.filenameFilters.isNotEmpty()) {
-            val matchesFilter = settings.filenameFilters.any { filter ->
-                val actualFilter = if (filter.startsWith(".")) filter else ".$filter"
-                fileProps.name.endsWith(actualFilter, ignoreCase = true)
-            }
-            if (!matchesFilter) {
-                logger.info("Skipping file due to filename filter: $relativePath")
-                val fileExtension = fileProps.extension ?: "no_extension"
-                excludedExtensions.add(fileExtension)
-                excludedByFilterCount.incrementAndGet()
-                return
-            }
+    private fun skipFilteredFile(fileProps: FileProperties, relativePath: String): Boolean {
+        if (!settings.areFiltersEnabled || settings.filenameFilters.isEmpty()) return false
+        val matchesFilter = settings.filenameFilters.any { filter ->
+            val actualFilter = if (filter.startsWith(".")) filter else ".$filter"
+            fileProps.name.endsWith(actualFilter, ignoreCase = true)
         }
+        if (!matchesFilter) {
+            logger.info("Skipping file due to filename filter: $relativePath")
+            val fileExtension = fileProps.extension ?: "no_extension"
+            excludedExtensions.add(fileExtension)
+            excludedByFilterCount.incrementAndGet()
+        }
+        return !matchesFilter
+    }
 
-        // --- Read File Content ---
-        scope.ensureActive() // Check cancellation before reading content
-        var fileContent = try {
-            ReadAction.compute<String, Exception> {
-                FileUtils.readFileContent(file)
-            }
+    private fun readFileContentSafely(
+        file: VirtualFile,
+        fileProps: FileProperties,
+        relativePath: String
+    ): String? {
+        val content = try {
+            ReadAction.compute<String, Exception> { FileUtils.readFileContent(file) }
         } catch (e: Exception) {
             logger.error("Error reading file content for $relativePath", e)
-            "// Error reading file: ${fileProps.path} (${e.message})" // Indicate error in output
+            "// Error reading file: ${fileProps.path} (${e.message})"
         }
 
-        // Add line numbers if enabled
-        if (settings.includeLineNumbers && !fileContent.startsWith("// Error reading file:")) {
-            fileContent = addLineNumbers(fileContent)
+        val prepared = if (settings.includeLineNumbers && !content.startsWith("// Error")) {
+            addLineNumbers(content)
+        } else {
+            content
         }
 
-
-        if (fileContent.isEmpty() || fileContent.startsWith("// Error reading file:")) {
+        if (prepared.isEmpty() || prepared.startsWith("// Error")) {
             logger.warn("File content is empty or unreadable, skipping file: $relativePath")
+            return null
+        }
+        return prepared
+    }
+
+    private fun applyPathPrefixIfNeeded(content: String, file: VirtualFile, relativePath: String): String {
+        if (!settings.includePathPrefix) return content
+        if (FileUtils.hasFilenamePrefix(content)) return content
+
+        val commentPrefix = ReadAction.compute<String, Exception> { FileUtils.getCommentPrefix(file) }
+        val formattedPrefix = if (commentPrefix.endsWith("-->")) {
+            commentPrefix.replace("-->", "$relativePath -->")
+        } else {
+            "$commentPrefix$relativePath"
+        }
+        return "$formattedPrefix\n$content"
+    }
+
+    private fun recordProcessedFile(
+        relativePath: String,
+        contentToAdd: String,
+        parentJob: Job,
+        localBuffer: MutableList<Pair<String, String>>
+    ) {
+        if (hasReachedFileLimit()) {
+            logger.warn("File limit reached just before adding file: $relativePath")
+            if (parentJob.isActive) parentJob.cancel("File limit reached")
             return
         }
 
-        // --- Add to Results (Using Local Buffer) ---
-        var limitReachedAfterAdd = false
+        localBuffer.add(relativePath to contentToAdd)
 
-        // Double-check limit before adding to local buffer
-        if (fileCount.get() < settings.fileCount) {
-            // Combine filename prefix and content into a single entry to prevent interleaving
-            val contentToAdd = if (settings.includePathPrefix) {
-                // Check if the file content already starts with any filename prefix
-                if (FileUtils.hasFilenamePrefix(fileContent)) {
-                    fileContent
-                } else {
-                    // Get the appropriate comment prefix for this file type
-                    val commentPrefix = ReadAction.compute<String, Exception> {
-                        FileUtils.getCommentPrefix(file)
-                    }
-                    // For HTML-style comments, insert the path before the closing tag
-                    val formattedPrefix = if (commentPrefix.endsWith("-->")) {
-                        commentPrefix.replace("-->", "$relativePath -->")
-                    } else {
-                        "$commentPrefix$relativePath"
-                    }
-                    "$formattedPrefix\n$fileContent"
-                }
-            } else {
-                fileContent
-            }
+        val currentFileCount = fileCount.incrementAndGet()
+        val currentProcessedCount = processedFileCount.incrementAndGet()
+        logger.info("Added file content ($currentProcessedCount/$currentFileCount): $relativePath")
 
-            // Add to local buffer as a (path, content) pair - no synchronization needed
-            localBuffer.add(relativePath to contentToAdd)
-
-            val currentFileCount = fileCount.incrementAndGet()
-            val currentProcessedCount = processedFileCount.incrementAndGet()
-
-            logger.info("Added file content ($currentProcessedCount/$currentFileCount): $relativePath")
-
-            // Update progress indicator
-            indicator.checkCanceled() // Use checkCanceled() instead of !isCanceled
-            val targetCount = settings.fileCount.toDouble()
-            if (targetCount > 0) {
-                indicator.fraction = min(1.0, currentFileCount.toDouble() / targetCount)
-            }
-            indicator.text = "Processed $currentProcessedCount files..."
-
-            // Check if limit is now reached *after* adding
-            if (currentFileCount >= settings.fileCount) {
-                logger.info("File count limit (${settings.fileCount}) reached after adding $relativePath.")
-                limitReachedAfterAdd = true
-            }
-        } else {
-            logger.warn("File limit reached just before adding file: $relativePath")
-            limitReachedAfterAdd = true
+        indicator.checkCanceled()
+        val targetCount = settings.fileCount.toDouble()
+        if (targetCount > 0) {
+            indicator.fraction = min(1.0, currentFileCount.toDouble() / targetCount)
         }
+        indicator.text = "Processed $currentProcessedCount files..."
 
-        // If limit was reached, cancel the shared parent job to stop siblings deterministically
-        if (limitReachedAfterAdd && parentJob.isActive) {
-            logger.info("Requesting cancellation of parent job due to file limit.")
+        if (currentFileCount >= settings.fileCount && parentJob.isActive) {
+            logger.info("File count limit (${settings.fileCount}) reached after adding $relativePath.")
             parentJob.cancel("File limit reached")
         }
     }

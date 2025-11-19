@@ -27,6 +27,7 @@ class SourceClipboardExportSettingsTest {
         assertEquals(AppConstants.OutputFormat.PLAIN_TEXT, state.outputFormat)
         assertEquals(AppConstants.DEFAULT_IGNORED_NAMES, state.ignoredNames)
         assertTrue(state.filenameFilters.isEmpty(), "Filter list should be empty by default")
+        assertEquals(3, state.stackTraceSettings.minFramesToFold)
     }
 
     @Test

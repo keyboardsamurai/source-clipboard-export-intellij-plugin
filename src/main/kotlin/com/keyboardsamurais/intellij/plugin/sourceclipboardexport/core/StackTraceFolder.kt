@@ -39,18 +39,18 @@ class StackTraceFolder(
     private val suppressedPattern: Pattern = Pattern.compile("""^\s*Suppressed:\s*.+$""")
 
     // Settings-backed fold prefix lists (with sane built-in defaults)
-    private val settingsState: SourceClipboardExportSettings.State by lazy {
+    private val settingsState: SourceClipboardExportSettings.StackTraceSettings by lazy {
         try {
             // getInstance may return null at runtime if service is unavailable in tests; catch and fall back
-            SourceClipboardExportSettings.getInstance().state
+            SourceClipboardExportSettings.getInstance().state.stackTraceSettings
         } catch (t: Throwable) {
             logger.warn("Settings service unavailable; using default folding settings.")
-            SourceClipboardExportSettings.State()
+            SourceClipboardExportSettings.StackTraceSettings()
         }
     }
 
-    private val alwaysFoldPrefixes: Set<String> by lazy { settingsState.stackTraceAlwaysFoldPrefixes.toSet() }
-    private val neverFoldPrefixes: Set<String> by lazy { settingsState.stackTraceNeverFoldPrefixes.toSet() }
+    private val alwaysFoldPrefixes: Set<String> by lazy { settingsState.alwaysFoldPrefixes.toSet() }
+    private val neverFoldPrefixes: Set<String> by lazy { settingsState.neverFoldPrefixes.toSet() }
 
     /**
      * Represents a parsed line from the stack trace.
@@ -131,62 +131,76 @@ class StackTraceFolder(
             val currentFrame = frameInfoList[i]
 
             if (currentFrame.isFoldable) {
-                // Start of a foldable block, find its end
-                var j = i
-                while (j < frameInfoList.size && frameInfoList[j].isFoldable) {
-                    j++
-                }
-
-                val foldCount = j - i
-                if (foldCount >= minFramesToFold) {
-                    // Keep head/tail context frames within the folded block
-                    val headKeep = keepHeadFrames.coerceAtLeast(0).coerceAtMost(foldCount)
-                    val tailKeep = keepTailFrames.coerceAtLeast(0).coerceAtMost(foldCount - headKeep)
-
-                    // Emit head frames
-                    if (headKeep > 0) {
-                        for (k in i until (i + headKeep)) {
-                            resultLines.add(frameInfoList[k].line)
-                        }
-                    }
-
-                    // Summarize packages for the actually folded middle section
-                    val foldedStart = i + headKeep
-                    val foldedEnd = j - tailKeep
-                    val foldedCount = (foldedEnd - foldedStart).coerceAtLeast(0)
-
-                    if (foldedCount > 0) {
-                        val indent = if (preserveIndentation) frameInfoList[i].indentation else "    "
-                        val hints = if (includePackageHints) summarizePackages(frameInfoList.subList(foldedStart, foldedEnd)) else null
-                        val placeholder = if (!hints.isNullOrBlank()) {
-                            "$indent... $foldedCount folded frames ($hints) ..."
-                        } else {
-                            "$indent... $foldedCount folded frames ..."
-                        }
-                        resultLines.add(placeholder)
-                    }
-
-                    // Emit tail frames
-                    if (tailKeep > 0) {
-                        for (k in (j - tailKeep) until j) {
-                            resultLines.add(frameInfoList[k].line)
-                        }
-                    }
-                    i = j // Skip past the folded block
-                } else {
-                    // Not long enough, add frames individually
-                    for (k in i until j) {
-                        resultLines.add(frameInfoList[k].line)
-                    }
-                    i = j
-                }
+                i = foldBlock(frameInfoList, i, resultLines)
             } else {
-                // Not a foldable frame, just add it
-                resultLines.add(currentFrame.line)
+                addLine(resultLines, currentFrame.line)
                 i++
             }
         }
         return resultLines.joinToString("\n")
+    }
+
+    private fun foldBlock(frameInfoList: List<StackFrameInfo>, startIndex: Int, resultLines: MutableList<String>): Int {
+        var blockEnd = startIndex
+        while (blockEnd < frameInfoList.size && frameInfoList[blockEnd].isFoldable) {
+            blockEnd++
+        }
+
+        val foldCount = blockEnd - startIndex
+        if (foldCount < minFramesToFold) {
+            for (k in startIndex until blockEnd) {
+                addLine(resultLines, frameInfoList[k].line)
+            }
+            return blockEnd
+        }
+
+        val headKeep = keepHeadFrames.coerceIn(0, foldCount)
+        val tailKeep = keepTailFrames.coerceIn(0, foldCount - headKeep)
+
+        emitHeadTail(frameInfoList, startIndex, headKeep, resultLines)
+        emitPlaceholder(frameInfoList, startIndex, blockEnd, headKeep, tailKeep, resultLines)
+        emitHeadTail(frameInfoList, blockEnd - tailKeep, tailKeep, resultLines)
+
+        return blockEnd
+    }
+
+    private fun emitHeadTail(
+        frameInfoList: List<StackFrameInfo>,
+        startIndex: Int,
+        count: Int,
+        resultLines: MutableList<String>
+    ) {
+        if (count <= 0) return
+        for (k in startIndex until startIndex + count) {
+            addLine(resultLines, frameInfoList[k].line)
+        }
+    }
+
+    private fun emitPlaceholder(
+        frameInfoList: List<StackFrameInfo>,
+        startIndex: Int,
+        blockEnd: Int,
+        headKeep: Int,
+        tailKeep: Int,
+        resultLines: MutableList<String>
+    ) {
+        val foldedStart = startIndex + headKeep
+        val foldedEnd = blockEnd - tailKeep
+        val foldedCount = (foldedEnd - foldedStart).coerceAtLeast(0)
+        if (foldedCount <= 0) return
+
+        val indent = if (preserveIndentation) frameInfoList[startIndex].indentation else "    "
+        val hints = if (includePackageHints) summarizePackages(frameInfoList.subList(foldedStart, foldedEnd)) else null
+        val placeholder = if (!hints.isNullOrBlank()) {
+            "$indent... $foldedCount folded frames ($hints) ..."
+        } else {
+            "$indent... $foldedCount folded frames ..."
+        }
+        addLine(resultLines, placeholder)
+    }
+
+    private fun addLine(resultLines: MutableList<String>, line: String) {
+        resultLines.add(line)
     }
 
     /**

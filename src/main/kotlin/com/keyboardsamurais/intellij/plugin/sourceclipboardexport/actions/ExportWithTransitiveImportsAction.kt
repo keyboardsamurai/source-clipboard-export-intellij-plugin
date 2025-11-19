@@ -58,9 +58,7 @@ class ExportWithTransitiveImportsAction : AnAction() {
     }
     
     override fun update(e: AnActionEvent) {
-        val project = e.project
-        val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)
-        e.presentation.isEnabledAndVisible = project != null && !selectedFiles.isNullOrEmpty()
+        e.presentation.isEnabledAndVisible = ActionUpdateSupport.hasProjectAndFiles(e)
     }
     
     override fun getActionUpdateThread(): ActionUpdateThread {

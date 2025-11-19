@@ -5,9 +5,7 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.vfs.VirtualFile
-import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.ActionRunners
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.RelatedFileFinder
 
@@ -29,47 +27,39 @@ class ExportWithTestsAction : AnAction() {
         val project = e.project ?: return
         val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) ?: return
 
-        ActionRunners.runSmartBackground(project, "Finding Related Tests") { indicator: ProgressIndicator ->
-            logger.info("Finding test files for ${selectedFiles.size} selected files")
-
-            val allFiles = mutableSetOf<VirtualFile>()
-            allFiles.addAll(selectedFiles)
-
-            var testsCollected = mutableSetOf<VirtualFile>()
-
-            selectedFiles.forEachIndexed { idx, file ->
-                indicator.fraction = (idx.toDouble() / selectedFiles.size).coerceIn(0.0, 1.0)
-                indicator.text = "Analyzing ${file.name} (${idx + 1}/${selectedFiles.size})"
-                val testFiles = RelatedFileFinder.findTestFiles(project, file)
-                testsCollected.addAll(testFiles)
-                logger.info("Found ${testFiles.size} test files for ${file.name}")
+        logger.info("Finding test files for ${selectedFiles.size} selected files")
+        RelatedFileExportRunner.run(
+            project = project,
+            selectedFiles = selectedFiles,
+            progressTitle = "Finding Related Tests",
+            collector = { proj, file ->
+                val found = RelatedFileFinder.findTestFiles(proj, file)
+                logger.info("Found ${found.size} test files for ${file.name}")
+                found
             }
-
-            var truncated = false
-            val limitedTests = if (testsCollected.size > Config.maxTests) {
-                truncated = true
-                testsCollected.toList().sortedBy { it.path }.take(Config.maxTests).toSet()
-            } else testsCollected
-
-            if (truncated) {
+        ) { originals, additional ->
+            var tests = additional
+            if (tests.size > Config.maxTests) {
                 NotificationUtils.showNotification(
                     project,
                     "Export Info",
-                    "Processing first ${Config.maxTests} of ${testsCollected.size} tests",
+                    "Processing first ${Config.maxTests} of ${tests.size} tests",
                     com.intellij.notification.NotificationType.INFORMATION
                 )
+                tests = tests.toList().sortedBy { it.path }.take(Config.maxTests).toSet()
             }
 
-            allFiles.addAll(limitedTests)
+            val allFiles = mutableSetOf<VirtualFile>().apply {
+                addAll(originals)
+                addAll(tests)
+            }
 
             SmartExportUtils.exportFiles(project, allFiles.toTypedArray())
         }
     }
     
     override fun update(e: AnActionEvent) {
-        val project = e.project
-        val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)
-        e.presentation.isEnabledAndVisible = project != null && !selectedFiles.isNullOrEmpty()
+        e.presentation.isEnabledAndVisible = ActionUpdateSupport.hasProjectAndFiles(e)
     }
     
     override fun getActionUpdateThread(): ActionUpdateThread {

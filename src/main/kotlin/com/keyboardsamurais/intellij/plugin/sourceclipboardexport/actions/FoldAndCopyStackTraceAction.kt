@@ -68,19 +68,20 @@ class FoldAndCopyStackTraceAction : AnAction() {
                     // Load settings
                     val settings = SourceClipboardExportSettings.getInstance().state
                     // Instantiate the folder with robust, LLM-friendly defaults
+                    val stackSettings = settings.stackTraceSettings
                     val folder = StackTraceFolder(
                         project,
-                        minFramesToFold = settings.stackTraceMinFramesToFold,
-                        keepHeadFrames = settings.stackTraceKeepHeadFrames,
-                        keepTailFrames = settings.stackTraceKeepTailFrames,
-                        includePackageHints = settings.stackTraceIncludePackageHints,
-                        treatEllipsisAsFoldable = settings.stackTraceTreatEllipsisAsFoldable,
+                        minFramesToFold = stackSettings.minFramesToFold,
+                        keepHeadFrames = stackSettings.keepHeadFrames,
+                        keepTailFrames = stackSettings.keepTailFrames,
+                        includePackageHints = stackSettings.includePackageHints,
+                        treatEllipsisAsFoldable = stackSettings.treatEllipsisAsFoldable,
                         preserveIndentation = true
                     )
 
                     // Folding requires read action, which folder handles internally
                     var foldedStackTrace = folder.foldStackTrace(selectedText)
-                    if (settings.stackTraceAppendRaw) {
+                    if (stackSettings.appendRaw) {
                         foldedStackTrace = buildString {
                             append(foldedStackTrace)
                             append('\n')

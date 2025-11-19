@@ -38,8 +38,7 @@ class ExportRecentChangesAction : AnAction() {
     }
     
     override fun update(e: AnActionEvent) {
-        val project = e.project
-        e.presentation.isEnabledAndVisible = project != null
+        e.presentation.isEnabledAndVisible = ActionUpdateSupport.hasProject(e)
     }
     
     override fun getActionUpdateThread(): ActionUpdateThread {
