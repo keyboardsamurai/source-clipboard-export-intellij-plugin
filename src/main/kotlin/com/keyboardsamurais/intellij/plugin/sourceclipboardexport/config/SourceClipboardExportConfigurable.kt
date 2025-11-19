@@ -46,6 +46,7 @@ class SourceClipboardExportConfigurable : Configurable {
     private var filtersTableModel: DefaultTableModel? = null
     private var filtersTable: JBTable? = null
     private var addFilterTextField: JTextField? = null
+    private var addFilterButton: JButton? = null
     private var ignoredNamesTextArea: JBTextArea? = null
     private var filtersEnabledCheckBox: JBCheckBox? = null
     private var includePathPrefixCheckBox: JBCheckBox? = null
@@ -54,6 +55,7 @@ class SourceClipboardExportConfigurable : Configurable {
     private var includeRepositorySummaryCheckBox: JBCheckBox? = null
     private var includeLineNumbersCheckBox: JBCheckBox? = null
     private var outputFormatComboBox: JComboBox<String>? = null
+    private val filterControlComponents = mutableListOf<JComponent>()
 
     /**
      * Constructs the settings UI tree on demand. Called whenever IntelliJ opens the Settings
@@ -63,17 +65,11 @@ class SourceClipboardExportConfigurable : Configurable {
         settingsPanel = JPanel(GridBagLayout())
         val gbc = createGridBagConstraints()
 
-        addFileLimitsPanel(gbc)
-        addPathPrefixToggle(gbc)
-        addLineNumbersToggle(gbc)
-        addDirectoryStructureToggles(gbc)
-        addRepositorySummaryToggle(gbc)
-        addOutputFormatDropdown(gbc)
-        addFiltersPanel(gbc)
-        addFiltersEnableToggle(gbc)
-        addFiltersNote(gbc)
-        addFiltersTable(gbc)
-        addIgnoredNamesPanel(gbc)
+        addSection(createScopeAndLimitsSection(), gbc)
+        addSection(createContentSection(), gbc)
+        addSection(createOutputFormatSection(), gbc)
+        addSection(createFiltersSection(), gbc)
+        addSection(createIgnoredNamesSection(), gbc, weightY = 0.5, fill = GridBagConstraints.BOTH)
 
         // Add a filler component to push everything to the top
         gbc.gridy++
@@ -96,178 +92,226 @@ class SourceClipboardExportConfigurable : Configurable {
         insets = JBUI.insets(5)
     }
 
-    // --- Panel Creation Methods (Mostly unchanged, ensure components are initialized) ---
+    private fun addSection(component: JComponent, gbc: GridBagConstraints, weightY: Double = 0.0, fill: Int = GridBagConstraints.HORIZONTAL) {
+        gbc.weighty = weightY
+        gbc.fill = fill
+        settingsPanel!!.add(component, gbc)
+        gbc.gridy++
+        gbc.weighty = 0.0
+        gbc.fill = GridBagConstraints.HORIZONTAL
+    }
 
-    private fun addFileLimitsPanel(gbc: GridBagConstraints) {
-        val limitsPanel = JPanel(GridLayout(2, 1, 0, 5)) // Use GridLayout for alignment
+    // --- Panel Creation Methods ---
 
-        val fileCountPanel = JPanel(FlowLayout(FlowLayout.LEFT, 5, 0)) // Tighter layout
+    private fun createScopeAndLimitsSection(): JComponent {
+        val panel = JPanel(GridBagLayout()).apply {
+            border = BorderFactory.createTitledBorder("Scope & Limits")
+        }
+
+        val innerGbc = GridBagConstraints().apply {
+            gridx = 0
+            gridy = 0
+            weightx = 1.0
+            fill = GridBagConstraints.HORIZONTAL
+            anchor = GridBagConstraints.NORTHWEST
+            insets = JBUI.insets(4, 4, 4, 4)
+        }
+
+        val fileCountRow = JPanel(FlowLayout(FlowLayout.LEFT, 5, 0))
         val fileCountLabel = JLabel("Maximum number of files to process:")
-        fileCountLabel.toolTipText = "Sets the upper limit for the number of files that will be processed and copied."
+        fileCountLabel.toolTipText = "Sets the upper limit for how many files can be exported in a single run."
         fileCountSpinner = JSpinner(SpinnerNumberModel(50, 1, Int.MAX_VALUE, 1))
-        fileCountPanel.add(fileCountLabel)
-        fileCountPanel.add(fileCountSpinner)
-        limitsPanel.add(fileCountPanel)
+        fileCountRow.add(fileCountLabel)
+        fileCountRow.add(fileCountSpinner)
+        panel.add(fileCountRow, innerGbc)
 
-        val fileSizePanel = JPanel(FlowLayout(FlowLayout.LEFT, 5, 0)) // Tighter layout
-        val fileSizeLabel = JLabel("Maximum file size to process (KB):")
-        fileSizeLabel.toolTipText = "Skips files larger than this size (in Kilobytes)."
+        innerGbc.gridy++
+        panel.add(createHintLabel("Higher values may slow down the export on very large projects."), innerGbc)
+
+        innerGbc.gridy++
+        val fileSizeRow = JPanel(FlowLayout(FlowLayout.LEFT, 5, 0))
+        val fileSizeLabel = JLabel("Maximum file size per file (KB):")
+        fileSizeLabel.toolTipText = "Files larger than this limit (in kilobytes) are skipped."
         maxFileSizeSpinner = JSpinner(SpinnerNumberModel(100, 1, Int.MAX_VALUE, 1))
-        fileSizePanel.add(fileSizeLabel)
-        fileSizePanel.add(maxFileSizeSpinner)
-        limitsPanel.add(fileSizePanel)
+        fileSizeRow.add(fileSizeLabel)
+        fileSizeRow.add(maxFileSizeSpinner)
+        panel.add(fileSizeRow, innerGbc)
 
-        settingsPanel!!.add(limitsPanel, gbc)
-        gbc.gridy++
+        innerGbc.gridy++
+        panel.add(createHintLabel("Use lower limits for quick exports; raise them when you need more context."), innerGbc)
+
+        return panel
     }
 
-    private fun addPathPrefixToggle(gbc: GridBagConstraints) {
-        includePathPrefixCheckBox = JBCheckBox("Include '// filename: path' prefix in output")
-        includePathPrefixCheckBox!!.toolTipText = "If checked, each file's content will be preceded by a comment with its relative path."
-        settingsPanel!!.add(includePathPrefixCheckBox, gbc)
-        gbc.gridy++
-    }
+    private fun createContentSection(): JComponent {
+        val container = JPanel(BorderLayout()).apply {
+            border = BorderFactory.createTitledBorder("Content Included in Export")
+        }
 
-    private fun addLineNumbersToggle(gbc: GridBagConstraints) {
-        includeLineNumbersCheckBox = JBCheckBox("Include line numbers in copied code")
-        includeLineNumbersCheckBox!!.toolTipText = "If checked, line numbers will be added to the beginning of each line in the copied code."
-        settingsPanel!!.add(includeLineNumbersCheckBox, gbc)
-        gbc.gridy++
-    }
-
-    private fun addDirectoryStructureToggles(gbc: GridBagConstraints) {
-        val structurePanel = JPanel(GridLayout(2, 1, 0, 5))
-
-        includeDirectoryStructureCheckBox = JBCheckBox("Include directory structure")
-        includeDirectoryStructureCheckBox!!.toolTipText = "If checked, a text-based tree representation of the directory structure will be included at the beginning of the output."
-        structurePanel.add(includeDirectoryStructureCheckBox)
-
-        includeFilesInStructureCheckBox = JBCheckBox("Include files in directory structure")
-        includeFilesInStructureCheckBox!!.toolTipText = "If checked, files will be included in the directory structure tree. Only applies if 'Include directory structure' is enabled."
-        structurePanel.add(includeFilesInStructureCheckBox)
-
-        settingsPanel!!.add(structurePanel, gbc)
-        gbc.gridy++
-    }
-
-    private fun addRepositorySummaryToggle(gbc: GridBagConstraints) {
+        val contentPanel = JPanel(GridLayout(0, 1, 4, 4))
+        includePathPrefixCheckBox = JBCheckBox("Add \"// filename: path\" before each file")
+        includePathPrefixCheckBox!!.toolTipText = "Adds the relative file path as a comment above each block of code."
+        includeLineNumbersCheckBox = JBCheckBox("Include line numbers in exported code")
+        includeLineNumbersCheckBox!!.toolTipText = "Prefixes every line in the export with its line number."
+        includeDirectoryStructureCheckBox = JBCheckBox("Include directory tree listing")
+        includeDirectoryStructureCheckBox!!.toolTipText = "Prepends a directory tree showing the exported scope."
+        includeFilesInStructureCheckBox = JBCheckBox("Include file list under each directory")
+        includeFilesInStructureCheckBox!!.toolTipText = "Lists files beneath each directory in the tree. Only applies when the tree is included."
         includeRepositorySummaryCheckBox = JBCheckBox("Include repository summary")
-        includeRepositorySummaryCheckBox!!.toolTipText = "If checked, a summary of repository statistics will be included at the beginning of the output."
-        settingsPanel!!.add(includeRepositorySummaryCheckBox, gbc)
-        gbc.gridy++
+        includeRepositorySummaryCheckBox!!.toolTipText = "Adds repository statistics before the exported files."
+
+        contentPanel.add(includePathPrefixCheckBox)
+        contentPanel.add(includeLineNumbersCheckBox)
+        contentPanel.add(includeDirectoryStructureCheckBox)
+        contentPanel.add(includeFilesInStructureCheckBox)
+        contentPanel.add(includeRepositorySummaryCheckBox)
+
+        container.add(contentPanel, BorderLayout.CENTER)
+        container.add(createHintLabel("Toggle the extra context that accompanies copied code."), BorderLayout.SOUTH)
+        return container
     }
 
+    private fun createOutputFormatSection(): JComponent {
+        val container = JPanel(BorderLayout()).apply {
+            border = BorderFactory.createTitledBorder("Output Format & Preview")
+        }
 
-    private fun addOutputFormatDropdown(gbc: GridBagConstraints) {
         val formatPanel = JPanel(FlowLayout(FlowLayout.LEFT, 5, 0))
-        val formatLabel = JLabel("Output Format:")
-        formatLabel.toolTipText = "Select the format for the exported source code."
+        val formatLabel = JLabel("Output format:")
+        formatLabel.toolTipText = "Choose how the exported text should be structured."
 
         outputFormatComboBox = JComboBox<String>().apply {
-            addItem("Plain Text (// filename:)")
-            addItem("Markdown (```lang)")
+            addItem("Plain text with filename headers")
+            addItem("Markdown code blocks")
             addItem("XML (machine-readable)")
-            toolTipText = "<html>Plain Text: Simple format with filename comments<br>" +
-                         "Markdown: Code blocks with syntax highlighting<br>" +
-                         "XML: Machine-readable format for tool integration</html>"
+            toolTipText = "<html>Plain text: Includes \"// filename\" comments.<br>" +
+                "Markdown: Wraps files in Markdown code fences.<br>" +
+                "XML: Provides structured output for tooling.</html>"
         }
 
         formatPanel.add(formatLabel)
         formatPanel.add(outputFormatComboBox)
 
-        // Add Preview Export button
-        val previewButton = createStyledButton("Preview Export")
-        previewButton.toolTipText = "Preview what will be exported with current settings"
+        val previewButton = createStyledButton("Preview Output…")
+        previewButton.toolTipText = "Open a modal preview using the current settings."
         previewButton.addActionListener { showExportPreview() }
         formatPanel.add(previewButton)
 
-        settingsPanel!!.add(formatPanel, gbc)
-        gbc.gridy++
+        container.add(formatPanel, BorderLayout.NORTH)
+        container.add(createHintLabel("Preview to verify formatting before copying."), BorderLayout.SOUTH)
+        return container
     }
 
-    private fun addFiltersPanel(gbc: GridBagConstraints) {
-        val filtersInputPanel = JPanel(FlowLayout(FlowLayout.LEFT, 5, 0)) // Tighter layout
-        val filterLabel = JLabel("Include files matching extensions (e.g., java, .kt):")
-        filterLabel.toolTipText = "Add file extensions (with or without leading dot) to include. If list is empty, all non-binary files are considered (respecting size/ignore limits)."
-        addFilterTextField = createStyledTextField("java or .kt")
-        val addButton = createStyledButton("Add Filter")
-        addButton.addActionListener { addFilter() }
+    private fun createFiltersSection(): JComponent {
+        val container = JPanel(GridBagLayout()).apply {
+            border = BorderFactory.createTitledBorder("File Extension Filters (Advanced)")
+        }
+
+        val innerGbc = GridBagConstraints().apply {
+            gridx = 0
+            gridy = 0
+            weightx = 1.0
+            fill = GridBagConstraints.HORIZONTAL
+            anchor = GridBagConstraints.NORTHWEST
+            insets = JBUI.insets(4, 4, 4, 4)
+        }
+
+        filtersEnabledCheckBox = JBCheckBox("Enable file extension filters")
+        filtersEnabledCheckBox!!.toolTipText = "Restrict exports to files with specific extensions."
+        filtersEnabledCheckBox!!.addActionListener { updateFilterControlsEnabledState() }
+        container.add(filtersEnabledCheckBox, innerGbc)
+
+        innerGbc.gridy++
+        container.add(
+            createHintLabel("If disabled, all non-binary files are considered (respecting ignore list and limits)."),
+            innerGbc
+        )
+
+        innerGbc.gridy++
+        val filtersInputPanel = JPanel(FlowLayout(FlowLayout.LEFT, 5, 0))
+        val filterLabel = JLabel("Extensions to include (e.g., .kt, .java):")
+        filterLabel.toolTipText = "Add extensions with or without a dot."
+        addFilterTextField = createStyledTextField(".kt, .java")
+        addFilterButton = createStyledButton("Add")
+        addFilterButton!!.addActionListener { addFilter() }
 
         filtersInputPanel.add(filterLabel)
         filtersInputPanel.add(addFilterTextField)
-        filtersInputPanel.add(addButton)
+        filtersInputPanel.add(addFilterButton)
 
-        settingsPanel!!.add(filtersInputPanel, gbc)
-        gbc.gridy++
-    }
+        container.add(filtersInputPanel, innerGbc)
 
-    private fun addFiltersEnableToggle(gbc: GridBagConstraints) {
-        filtersEnabledCheckBox = JBCheckBox("Enable file extension filters")
-        filtersEnabledCheckBox!!.toolTipText = "When enabled, only files matching the filters below are included. If the list is empty, no files are filtered out."
-        settingsPanel!!.add(filtersEnabledCheckBox, gbc)
-        gbc.gridy++
-    }
-
-    private fun addFiltersNote(gbc: GridBagConstraints) {
-        val note = JLabel(
-            "Note: If enabled and the list is empty, no filter is applied — all non-binary files are considered (respecting size and ignore settings)."
-        )
-        note.foreground = UIManager.getColor("Label.disabledForeground") ?: note.foreground
-        settingsPanel!!.add(note, gbc)
-        gbc.gridy++
-    }
-
-    private fun addFiltersTable(gbc: GridBagConstraints) {
-        gbc.fill = GridBagConstraints.BOTH // Allow table to resize
-        gbc.weighty = 0.3 // Give table some vertical space preference
-
-        filtersTableModel = DefaultTableModel(arrayOf("Filter", "Action"), 0)
+        innerGbc.gridy++
+        filtersTableModel = DefaultTableModel(arrayOf("Extension", "Action"), 0)
         filtersTable = JBTable(filtersTableModel).apply {
-            // Make table non-editable except for the button column interaction
             setDefaultEditor(Object::class.java, null)
             setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
-            preferredScrollableViewportSize = Dimension(450, 100) // Suggest initial size
+            preferredScrollableViewportSize = Dimension(450, 100)
             columnModel.getColumn(0).preferredWidth = 350
             columnModel.getColumn(1).preferredWidth = 100
             columnModel.getColumn(1).maxWidth = 120
 
-            // Add the remove button column using the helper
             TableButtonColumn.add(this, 1, "Remove") { row ->
                 filtersTableModel?.takeIf { row >= 0 && it.rowCount > row }?.removeRow(row)
             }
         }
-
         val scrollPane = JBScrollPane(filtersTable)
-        settingsPanel!!.add(scrollPane, gbc)
-        gbc.gridy++
-        gbc.weighty = 0.0 // Reset weighty for next components
+        innerGbc.fill = GridBagConstraints.BOTH
+        innerGbc.weighty = 0.3
+        container.add(scrollPane, innerGbc)
+
+        innerGbc.gridy++
+        innerGbc.weighty = 0.0
+        innerGbc.fill = GridBagConstraints.HORIZONTAL
+        container.add(createHintLabel("Only files with listed extensions are exported."), innerGbc)
+
+        registerFilterControl(addFilterTextField!!)
+        registerFilterControl(addFilterButton!!)
+        registerFilterControl(filtersTable!!)
+
+        return container
     }
 
-    private fun addIgnoredNamesPanel(gbc: GridBagConstraints) {
-        val ignoredPanel = JPanel(BorderLayout(0, 5)) // Use BorderLayout
+    private fun createIgnoredNamesSection(): JComponent {
+        val container = JPanel(BorderLayout(0, 5)).apply {
+            border = BorderFactory.createTitledBorder("Ignored Files & Directories")
+        }
 
         val ignoredLabel = JLabel("Ignored file/directory names (one per line):")
-        ignoredLabel.toolTipText = "Files or directories with these exact names will be skipped entirely."
-        ignoredPanel.add(ignoredLabel, BorderLayout.NORTH)
+        ignoredLabel.toolTipText = "Files or directories with these names are skipped completely."
+        container.add(ignoredLabel, BorderLayout.NORTH)
 
         ignoredNamesTextArea = JBTextArea().apply {
             rows = 4
             lineWrap = true
             wrapStyleWord = true
-            // Consider adding border for clarity
             border = BorderFactory.createCompoundBorder(
-                UIManager.getBorder("TextField.border"), // Match look and feel
-                JBUI.Borders.empty(2) // Add inner padding
+                UIManager.getBorder("TextField.border"),
+                JBUI.Borders.empty(2)
             )
         }
-        val scrollPane = JBScrollPane(ignoredNamesTextArea)
-        scrollPane.preferredSize = Dimension(450, 80) // Suggest initial size
-        ignoredPanel.add(scrollPane, BorderLayout.CENTER)
 
-        gbc.fill = GridBagConstraints.BOTH // Allow text area to resize
-        gbc.weighty = 0.7 // Give text area more vertical space preference
-        settingsPanel!!.add(ignoredPanel, gbc)
-        // gbc.gridy++ // No need to increment gridy if it's the last element before the filler
+        container.add(JBScrollPane(ignoredNamesTextArea), BorderLayout.CENTER)
+        container.add(
+            createHintLabel("Matches project paths. Add entries like \".git\", \"build\", or \"**/generated\"."),
+            BorderLayout.SOUTH
+        )
+        return container
+    }
+
+    private fun registerFilterControl(component: JComponent) {
+        filterControlComponents.add(component)
+    }
+
+    private fun updateFilterControlsEnabledState() {
+        val enabled = filtersEnabledCheckBox?.isSelected ?: false
+        filterControlComponents.forEach { it.isEnabled = enabled }
+    }
+
+    private fun createHintLabel(text: String): JLabel {
+        return JLabel(text).apply {
+            foreground = UIManager.getColor("Label.disabledForeground") ?: foreground
+        }
     }
 
     // --- Action Handlers and Logic ---
@@ -282,14 +326,14 @@ class SourceClipboardExportConfigurable : Configurable {
         } else if (!StringUtils.isValidFilterFormat(filterText)) {
             JOptionPane.showMessageDialog(
                 settingsPanel,
-                "Invalid filter format. Filters should be like '.java' or 'kt' (alphanumeric, optionally starting with a dot).",
+                "Invalid extension format. Extensions should look like '.java' or 'kt' (letters/numbers, optional leading dot).",
                 "Invalid Input",
                 JOptionPane.ERROR_MESSAGE
             )
         } else {
             JOptionPane.showMessageDialog(
                 settingsPanel,
-                "Filter '$filterText' already exists.",
+                "Extension '$filterText' is already listed.",
                 "Duplicate Filter",
                 JOptionPane.WARNING_MESSAGE
             )
@@ -411,6 +455,8 @@ class SourceClipboardExportConfigurable : Configurable {
         }
 
         ignoredNamesTextArea!!.text = settings.ignoredNames.joinToString("\n")
+
+        updateFilterControlsEnabledState()
 
         LOGGER.debug("Resetting settings UI to: File count = ${settings.fileCount}, Max Size KB = ${settings.maxFileSizeKb}, " +
                 "Include Prefix = ${settings.includePathPrefix}, Include Directory Structure = ${settings.includeDirectoryStructure}, " +
