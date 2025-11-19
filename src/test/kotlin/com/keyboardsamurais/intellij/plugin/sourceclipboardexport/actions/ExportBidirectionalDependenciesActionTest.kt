@@ -84,9 +84,6 @@ class ExportBidirectionalDependenciesActionTest {
     fun `test action performed with user cancellation`() {
         // For now, we'll just verify that the action can be called without throwing
         // Testing dialog interactions in IntelliJ tests is complex
-        val mockFile = createMockFile("Test.kt", false)
-        val event = createMockEvent(project = project, files = arrayOf(mockFile))
-        
         // The action will show a dialog, but in tests it might not work as expected
         // Just verify no exception is thrown when there's a valid project and files
         try {
@@ -101,9 +98,6 @@ class ExportBidirectionalDependenciesActionTest {
     @Test
     fun `test action performed with direct imports choice`() {
         // Similar to above - focus on verifying the action setup rather than dialog behavior
-        val mockFile = createMockFile("Test.kt", false)
-        val event = createMockEvent(project = project, files = arrayOf(mockFile))
-        
         // Verify the action is properly configured
         assert(action.templatePresentation.text == "Include Bidirectional Dependencies")
         assert(action.templatePresentation.description == "Export selected files + dependencies + reverse dependencies")

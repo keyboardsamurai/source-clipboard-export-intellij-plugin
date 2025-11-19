@@ -99,6 +99,18 @@ tasks {
             "java.util.logging.config.file",
             "${project.projectDir}/src/test/resources/logging.properties"
         )
+        addTestListener(object : TestListener {
+            override fun beforeSuite(desc: TestDescriptor) {}
+            override fun beforeTest(desc: TestDescriptor) {}
+            override fun afterTest(desc: TestDescriptor, result: TestResult) {}
+            override fun afterSuite(desc: TestDescriptor, result: TestResult) {
+                if (desc.parent == null) {
+                    logger.lifecycle(
+                        "Test summary: ${result.resultType} - ${result.testCount} tests, ${result.successfulTestCount} succeeded, ${result.failedTestCount} failed, ${result.skippedTestCount} skipped"
+                    )
+                }
+            }
+        })
     }
 
     // Configure IntelliJ harness tests
@@ -129,7 +141,7 @@ tasks {
 
     named<JacocoReport>("jacocoTestReport") {
         dependsOn(intellijHarnessTest)
-        executionData.setFrom(file("$buildDir/jacoco/test.exec"))
+        executionData.setFrom(layout.buildDirectory.file("jacoco/test.exec").get().asFile)
         classDirectories.setFrom(files(mainSourceSet.output))
         sourceDirectories.setFrom(files(mainSourceSet.allSource.srcDirs))
     }

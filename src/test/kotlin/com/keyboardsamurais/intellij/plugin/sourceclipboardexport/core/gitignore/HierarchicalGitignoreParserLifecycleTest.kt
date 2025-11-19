@@ -23,7 +23,7 @@ class HierarchicalGitignoreParserLifecycleTest {
         every { project.getService(HierarchicalGitignoreParser::class.java) } returns mockParser
 
         // Act
-        val exporter = SourceExporter(project, settings, indicator)
+        SourceExporter(project, settings, indicator)
 
         // Assert
         // Verify that getService was called

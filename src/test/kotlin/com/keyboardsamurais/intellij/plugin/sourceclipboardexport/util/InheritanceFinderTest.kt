@@ -13,6 +13,7 @@ class InheritanceFinderTest {
     private val inheritableElementClass = Class.forName(
         "com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.InheritanceFinder\$InheritableElement"
     )
+    @Suppress("UNCHECKED_CAST")
     private val elementTypeClass = Class.forName(
         "com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.InheritanceFinder\$ElementType"
     ) as Class<out Enum<*>>
@@ -68,7 +69,7 @@ class InheritanceFinderTest {
     private fun newElement(name: String, type: String): Any {
         val ctor = inheritableElementClass.getDeclaredConstructor(String::class.java, elementTypeClass)
         ctor.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
+        @Suppress("UNCHECKED_CAST", "USELESS_CAST")
         val enumValue = java.lang.Enum.valueOf(elementTypeClass as Class<out Enum<*>>, type)
         return ctor.newInstance(name, enumValue)
     }

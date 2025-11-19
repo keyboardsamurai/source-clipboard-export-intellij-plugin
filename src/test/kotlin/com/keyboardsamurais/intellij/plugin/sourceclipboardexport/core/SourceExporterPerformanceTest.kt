@@ -56,7 +56,7 @@ class SourceExporterPerformanceTest {
                     maxFileSizeKb = 100
                 }
 
-        val exporter = SourceExporter(project, settings, indicator)
+        SourceExporter(project, settings, indicator)
 
         // The actual CPU count will vary by system, but should be reasonable
         val cpuCount = Runtime.getRuntime().availableProcessors()
@@ -107,8 +107,6 @@ class SourceExporterPerformanceTest {
         every { rootDir.children } returns files.toTypedArray()
         every { rootDir.isValid } returns true
         every { rootDir.exists() } returns true
-
-        every { project.baseDir } returns rootDir
 
         val exporter = SourceExporter(project, settings, indicator)
         val result = exporter.exportSources(arrayOf(rootDir))
@@ -180,8 +178,6 @@ class SourceExporterPerformanceTest {
         every { rootDir.children } returns files.toTypedArray()
         every { rootDir.isValid } returns true
         every { rootDir.exists() } returns true
-
-        every { project.baseDir } returns rootDir
 
         val exporter = SourceExporter(project, settings, indicator)
 

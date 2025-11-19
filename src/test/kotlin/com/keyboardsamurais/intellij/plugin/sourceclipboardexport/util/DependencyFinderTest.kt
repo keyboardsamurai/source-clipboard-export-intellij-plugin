@@ -22,16 +22,19 @@ class DependencyFinderTest {
     private val cacheField = DependencyFinder::class.java.getDeclaredField("dependentsCache").apply {
         isAccessible = true
     }
+    @Suppress("UNCHECKED_CAST")
+    private fun dependentsCache(): ConcurrentHashMap<String, Set<VirtualFile>> =
+        cacheField.get(DependencyFinder) as ConcurrentHashMap<String, Set<VirtualFile>>
 
     @BeforeEach
     fun setup() {
-        (cacheField.get(DependencyFinder) as ConcurrentHashMap<*, *>).clear()
+        dependentsCache().clear()
     }
 
     @AfterEach
     fun tearDown() {
         unmockkAll()
-        (cacheField.get(DependencyFinder) as ConcurrentHashMap<*, *>).clear()
+        dependentsCache().clear()
     }
 
     @Test
@@ -42,7 +45,7 @@ class DependencyFinderTest {
         every { file.path } returns "/src/Foo.kt"
         every { cachedFile.path } returns "/src/Bar.kt"
 
-        val cache = cacheField.get(DependencyFinder) as ConcurrentHashMap<String, Set<VirtualFile>>
+        val cache = dependentsCache()
         val key = listOf("/src/Foo.kt").sorted().joinToString(";")
         cache[key] = setOf(cachedFile)
 
@@ -53,7 +56,7 @@ class DependencyFinderTest {
 
     @Test
     fun `clearCaches empties dependents cache`() {
-        val cache = cacheField.get(DependencyFinder) as ConcurrentHashMap<String, Set<VirtualFile>>
+        val cache = dependentsCache()
         cache["key"] = emptySet()
         DependencyFinder.clearCaches()
         assertEquals(0, cache.size)
@@ -61,7 +64,7 @@ class DependencyFinderTest {
 
     @Test
     fun `getCacheStats reflects cache size`() {
-        val cache = cacheField.get(DependencyFinder) as ConcurrentHashMap<String, Set<VirtualFile>>
+        val cache = dependentsCache()
         cache["stat"] = emptySet()
         val stats = DependencyFinder.getCacheStats()
         assertEquals("Dependents cache: 1 entries", stats)
