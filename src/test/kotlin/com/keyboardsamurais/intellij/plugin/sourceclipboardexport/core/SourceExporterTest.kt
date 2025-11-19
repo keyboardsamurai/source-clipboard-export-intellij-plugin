@@ -8,6 +8,7 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.ThrowableComputable
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
@@ -85,7 +86,7 @@ class SourceExporterTest {
 
         // Mock ReadAction to execute computables directly
         every { ReadAction.compute<Any?, Exception>(any()) } answers {
-            val computable = firstArg<com.intellij.openapi.util.Computable<out Any?>>()
+            val computable = firstArg<ThrowableComputable<Any?, Exception>>()
             computable.compute()
         }
 
