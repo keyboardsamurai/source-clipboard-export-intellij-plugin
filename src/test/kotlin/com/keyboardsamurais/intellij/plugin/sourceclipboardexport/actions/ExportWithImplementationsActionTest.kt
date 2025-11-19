@@ -1,14 +1,30 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions
 
+import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.ActionRunners
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.DebugTracer
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.InheritanceFinder
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
+import io.mockk.Runs
+import io.mockk.coEvery
 import io.mockk.every
+import io.mockk.just
+import io.mockk.justRun
 import io.mockk.mockk
+import io.mockk.mockkConstructor
+import io.mockk.mockkObject
+import io.mockk.mockkStatic
+import io.mockk.unmockkAll
 import io.mockk.verify
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import javax.swing.SwingUtilities
 
 class ExportWithImplementationsActionTest {
     
@@ -32,14 +48,22 @@ class ExportWithImplementationsActionTest {
         
         every { javaFile.isDirectory } returns false
         every { javaFile.extension } returns "java"
+        every { javaFile.path } returns "/src/Main.java"
         
         every { kotlinFile.isDirectory } returns false
         every { kotlinFile.extension } returns "kt"
+        every { kotlinFile.path } returns "/src/Thing.kt"
         
         every { nonJvmFile.isDirectory } returns false
         every { nonJvmFile.extension } returns "js"
+        every { nonJvmFile.path } returns "/web/app.js"
         
         every { directory.isDirectory } returns true
+    }
+
+    @AfterEach
+    fun tearDown() {
+        unmockkAll()
     }
     
     @Test
@@ -321,5 +345,104 @@ class ExportWithImplementationsActionTest {
             // Expected - IntelliJ services aren't available in test environment
             // The test validates the method structure exists
         }
+    }
+
+    @Test
+    fun `actionPerformed runs implementation scan and exports union`() {
+        every { event.project } returns project
+        every { event.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) } returns arrayOf(javaFile)
+        val implementationFile = mockk<VirtualFile>(relaxed = true)
+        every { implementationFile.path } returns "/src/Impl.java"
+
+        mockkObject(ActionRunners)
+        val indicator = mockk<ProgressIndicator>(relaxed = true)
+        every { ActionRunners.runSmartBackground(project, any(), any(), any()) } answers {
+            val task = arg<(ProgressIndicator) -> Unit>(3)
+            task(indicator)
+        }
+
+        mockkObject(InheritanceFinder)
+        coEvery { InheritanceFinder.getImplementationStats(any(), any()) } returns InheritanceFinder.ImplementationStats(interfaceCount = 1)
+        coEvery {
+            InheritanceFinder.findImplementations(any(), any(), includeAnonymous = true, includeTest = true)
+        } returns setOf(implementationFile)
+
+        mockkObject(SmartExportUtils)
+        justRun { SmartExportUtils.exportFiles(any(), any()) }
+
+        mockkObject(NotificationUtils)
+        justRun { NotificationUtils.showNotification(any(), any(), any(), any()) }
+
+        mockkObject(DebugTracer)
+        every { DebugTracer.start(any()) } just Runs
+        every { DebugTracer.log(any()) } just Runs
+        every { DebugTracer.dump() } returns "trace"
+        every { DebugTracer.end() } just Runs
+
+        mockkConstructor(DebugOutputDialog::class)
+        every { anyConstructed<DebugOutputDialog>().show() } returns Unit
+
+        mockkStatic(SwingUtilities::class)
+        every { SwingUtilities.invokeLater(any()) } just Runs
+
+        action.actionPerformed(event)
+
+        verify {
+            SmartExportUtils.exportFiles(project, match { files ->
+                files.toSet() == setOf(javaFile, implementationFile)
+            })
+        }
+        verify(exactly = 0) {
+            NotificationUtils.showNotification(project, any(), any(), NotificationType.INFORMATION)
+        }
+    }
+
+    @Test
+    fun `actionPerformed surfaces implementation errors`() {
+        every { event.project } returns project
+        every { event.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) } returns arrayOf(javaFile)
+
+        mockkObject(ActionRunners)
+        val indicator = mockk<ProgressIndicator>(relaxed = true)
+        every { ActionRunners.runSmartBackground(project, any(), any(), any()) } answers {
+            val task = arg<(ProgressIndicator) -> Unit>(3)
+            task(indicator)
+        }
+
+        mockkObject(InheritanceFinder)
+        coEvery { InheritanceFinder.getImplementationStats(any(), any()) } returns InheritanceFinder.ImplementationStats(interfaceCount = 1)
+        coEvery {
+            InheritanceFinder.findImplementations(any(), any(), includeAnonymous = true, includeTest = true)
+        } throws IllegalStateException("boom")
+
+        mockkObject(SmartExportUtils)
+        justRun { SmartExportUtils.exportFiles(any(), any()) }
+
+        mockkObject(NotificationUtils)
+        justRun { NotificationUtils.showNotification(any(), any(), any(), any()) }
+
+        mockkObject(DebugTracer)
+        every { DebugTracer.start(any()) } just Runs
+        every { DebugTracer.log(any()) } just Runs
+        every { DebugTracer.dump() } returns "trace\n"
+        every { DebugTracer.end() } just Runs
+
+        mockkConstructor(DebugOutputDialog::class)
+        every { anyConstructed<DebugOutputDialog>().show() } returns Unit
+
+        mockkStatic(SwingUtilities::class)
+        every { SwingUtilities.invokeLater(any()) } just Runs
+
+        action.actionPerformed(event)
+
+        verify(exactly = 1) {
+            NotificationUtils.showNotification(
+                project,
+                "Export Error",
+                match { it.contains("Failed to find implementations") },
+                NotificationType.ERROR
+            )
+        }
+        verify(exactly = 0) { SmartExportUtils.exportFiles(any(), any()) }
     }
 }

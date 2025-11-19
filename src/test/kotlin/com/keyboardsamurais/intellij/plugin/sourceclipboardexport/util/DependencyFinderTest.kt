@@ -1,102 +1,115 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util
 
+import com.intellij.openapi.application.Application
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.ThrowableComputable
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
+import com.intellij.psi.PsiManager
 import com.intellij.psi.PsiNameIdentifierOwner
-import com.intellij.psi.PsiRecursiveElementVisitor
+import com.intellij.psi.PsiReference
+import com.intellij.psi.search.GlobalSearchScope
+import com.intellij.psi.search.searches.ReferencesSearch
+import com.intellij.util.AbstractQuery
 import io.mockk.every
+import io.mockk.justRun
 import io.mockk.mockk
+import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import java.util.concurrent.ConcurrentHashMap
+import kotlin.test.assertEquals
 
 class DependencyFinderTest {
 
-    private val cacheField = DependencyFinder::class.java.getDeclaredField("dependentsCache").apply {
-        isAccessible = true
-    }
-    @Suppress("UNCHECKED_CAST")
-    private fun dependentsCache(): ConcurrentHashMap<String, Set<VirtualFile>> =
-        cacheField.get(DependencyFinder) as ConcurrentHashMap<String, Set<VirtualFile>>
+    private val project = mockk<Project>(relaxed = true)
 
     @BeforeEach
     fun setup() {
-        dependentsCache().clear()
+        mockkStatic(ReadAction::class)
+        every { ReadAction.compute(any<ThrowableComputable<*, *>>()) } answers {
+            val computable = it.invocation.args[0] as ThrowableComputable<Any?, Exception>
+            computable.compute()
+        }
+        mockkStatic(ApplicationManager::class)
+        val app = mockk<Application>(relaxed = true)
+        every { ApplicationManager.getApplication() } returns app
+        every { app.isUnitTestMode } returns true
+
+        mockkStatic(GlobalSearchScope::class)
+        mockkStatic(PsiManager::class)
+        mockkStatic(ReferencesSearch::class)
+        mockkStatic(com.intellij.openapi.progress.ProgressManager::class)
+        justRun { com.intellij.openapi.progress.ProgressManager.checkCanceled() }
     }
 
     @AfterEach
     fun tearDown() {
-        unmockkAll()
-        dependentsCache().clear()
-    }
-
-    @Test
-    fun `findDependents returns cached result`() = runBlocking {
-        val project = mockk<Project>(relaxed = true)
-        val file = mockk<VirtualFile>(relaxed = true)
-        val cachedFile = mockk<VirtualFile>(relaxed = true)
-        every { file.path } returns "/src/Foo.kt"
-        every { cachedFile.path } returns "/src/Bar.kt"
-
-        val cache = dependentsCache()
-        val key = listOf("/src/Foo.kt").sorted().joinToString(";")
-        cache[key] = setOf(cachedFile)
-
-        val result = DependencyFinder.findDependents(arrayOf(file), project)
-
-        assertEquals(setOf(cachedFile), result)
-    }
-
-    @Test
-    fun `clearCaches empties dependents cache`() {
-        val cache = dependentsCache()
-        cache["key"] = emptySet()
         DependencyFinder.clearCaches()
-        assertEquals(0, cache.size)
+        unmockkAll()
     }
 
     @Test
-    fun `getCacheStats reflects cache size`() {
-        val cache = dependentsCache()
-        cache["stat"] = emptySet()
-        val stats = DependencyFinder.getCacheStats()
-        assertEquals("Dependents cache: 1 entries", stats)
-    }
-
-    @Test
-    fun `validateConfiguration completes for large selections`() {
-        DependencyFinder.validateConfiguration(selectedFilesCount = 20)
-    }
-
-    @Test
-    fun `findReferenceableElementsOptimized collects top level identifiers`() {
-        val method = DependencyFinder::class.java.getDeclaredMethod(
-            "findReferenceableElementsOptimized",
-            PsiFile::class.java
-        ).apply { isAccessible = true }
-
-        val topLevel = mockk<PsiNameIdentifierOwner>(relaxed = true)
-        every { topLevel.name } returns "Foo"
-        val nested = mockk<PsiNameIdentifierOwner>(relaxed = true)
-        every { nested.name } returns "Bar"
-
-        val psiFile = mockk<PsiFile>(relaxed = true)
-        every { psiFile.children } returns arrayOf<PsiElement>(topLevel)
-        every { psiFile.accept(any()) } answers {
-            val visitor = firstArg<PsiRecursiveElementVisitor>()
-            visitor.visitElement(nested)
+    fun `findDependents returns verified PSI hits`() = runBlocking {
+        val sourceFile = mockVirtualFile("Foo.kt").apply { every { nameWithoutExtension } returns "Foo" }
+        val candidateFile = mockVirtualFile("Bar.kt").apply {
+            every { extension } returns "kt"
+            every { length } returns 128L
         }
+        val scope = mockk<GlobalSearchScope>(relaxed = true)
+        every { GlobalSearchScope.filesScope(project, any<Collection<VirtualFile>>()) } returns scope
 
-        val result = method.invoke(DependencyFinder, psiFile) as List<*>
-        assertTrue(result.contains(topLevel))
-        assertTrue(result.contains(nested))
-        assertTrue(result.contains(psiFile))
+        val psiManager = mockk<PsiManager>()
+        every { PsiManager.getInstance(project) } returns psiManager
+
+        val psiClassElement = mockk<PsiNameIdentifierOwner>(relaxed = true)
+        val sourcePsi = mockk<PsiFile>(relaxed = true)
+        every { sourcePsi.virtualFile } returns sourceFile
+        every { sourcePsi.children } returns arrayOf(psiClassElement as PsiElement)
+        every { sourcePsi.accept(any()) } answers { }
+        every { psiManager.findFile(sourceFile) } returns sourcePsi
+
+        val referenceElement = mockk<PsiElement>(relaxed = true)
+        val referencePsiFile = mockk<PsiFile>(relaxed = true)
+        every { referencePsiFile.virtualFile } returns candidateFile
+        every { referenceElement.containingFile } returns referencePsiFile
+        val psiReference = mockk<PsiReference>()
+        every { psiReference.element } returns referenceElement
+
+        val query = object : AbstractQuery<PsiReference>() {
+            override fun processResults(consumer: com.intellij.util.Processor<in PsiReference>): Boolean {
+                consumer.process(psiReference)
+                return true
+            }
+        }
+        every { ReferencesSearch.search(any(), scope, false) } returns query
+
+        val dependents = DependencyFinder.runPsiVerificationPhase(
+                files = arrayOf(sourceFile),
+                project = project,
+                candidatesToProcess = setOf(candidateFile),
+                alreadyIncludedFiles = emptySet(),
+                maxResults = 10
+        )
+
+        assertEquals(setOf(candidateFile), dependents)
+    }
+
+    private fun mockVirtualFile(name: String): VirtualFile {
+        val vf = mockk<VirtualFile>(relaxed = true)
+        every { vf.name } returns name
+        every { vf.extension } returns name.substringAfterLast('.', "kt")
+        every { vf.nameWithoutExtension } returns name.substringBeforeLast('.', name)
+        every { vf.path } returns "/repo/$name"
+        every { vf.isDirectory } returns false
+        every { vf.exists() } returns true
+        every { vf.isValid } returns true
+        every { vf.length } returns 64L
+        return vf
     }
 }

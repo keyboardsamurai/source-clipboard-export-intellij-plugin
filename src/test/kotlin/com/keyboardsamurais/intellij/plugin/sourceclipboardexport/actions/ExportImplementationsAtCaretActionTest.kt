@@ -6,19 +6,25 @@ import com.intellij.openapi.editor.CaretModel
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiFile
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.ActionRunners
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.DebugTracer
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.InheritanceFinder
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
 import io.mockk.mockkObject
+import io.mockk.mockkStatic
 import io.mockk.spyk
 import io.mockk.unmockkAll
 import io.mockk.verify
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import javax.swing.SwingUtilities
 
 class ExportImplementationsAtCaretActionTest {
 
@@ -69,6 +75,111 @@ class ExportImplementationsAtCaretActionTest {
             SmartExportUtils.exportFiles(project, match { files ->
                 files.size == 1 && files[0] == primaryFile
             })
+        }
+    }
+
+    @Test
+    fun `runForSymbols exports implementations and shows debug dialog`() {
+        val action = ExportImplementationsAtCaretAction()
+        val method = ExportImplementationsAtCaretAction::class.java.getDeclaredMethod(
+            "runForSymbols",
+            Project::class.java,
+            VirtualFile::class.java,
+            List::class.java,
+            Boolean::class.javaPrimitiveType,
+            Boolean::class.javaPrimitiveType
+        ).apply { isAccessible = true }
+
+        val basePsi = mockk<PsiClass>(relaxed = true)
+        every { basePsi.qualifiedName } returns "com.example.Base"
+        val baseFile = mockk<VirtualFile>(relaxed = true)
+        every { baseFile.path } returns "/repo/Base.kt"
+
+        val implFile = mockk<VirtualFile>(relaxed = true)
+        every { implFile.path } returns "/repo/Impl.kt"
+
+        mockkObject(ActionRunners)
+        every { ActionRunners.runSmartBackground(project, any(), any(), any()) } answers {
+            val task = it.invocation.args[3] as (com.intellij.openapi.progress.ProgressIndicator) -> Unit
+            task(mockk(relaxed = true))
+        }
+        mockkObject(InheritanceFinder)
+        coEvery {
+            InheritanceFinder.findImplementationsFor(listOf(basePsi), project, includeAnonymous = true, includeTest = false)
+        } returns setOf(implFile)
+
+        mockkObject(SmartExportUtils)
+        justRun { SmartExportUtils.exportFiles(any(), any()) }
+        mockkObject(NotificationUtils)
+        mockkObject(DebugTracer)
+        justRun { DebugTracer.start(any()) }
+        justRun { DebugTracer.log(any()) }
+        every { DebugTracer.dump() } returns "logs"
+        justRun { DebugTracer.end() }
+        mockkStatic(SwingUtilities::class)
+        justRun { SwingUtilities.invokeLater(any()) }
+
+        method.invoke(action, project, baseFile, listOf(basePsi), true, false)
+
+        verify {
+            SmartExportUtils.exportFiles(project, match { files ->
+                files.contains(baseFile) && files.contains(implFile)
+            })
+        }
+        verify(exactly = 0) {
+            NotificationUtils.showNotification(project, any(), match { it.contains("No implementations") }, any())
+        }
+    }
+
+    @Test
+    fun `runForSymbols warns when no implementations found`() {
+        val action = ExportImplementationsAtCaretAction()
+        val method = ExportImplementationsAtCaretAction::class.java.getDeclaredMethod(
+            "runForSymbols",
+            Project::class.java,
+            VirtualFile::class.java,
+            List::class.java,
+            Boolean::class.javaPrimitiveType,
+            Boolean::class.javaPrimitiveType
+        ).apply { isAccessible = true }
+
+        val basePsi = mockk<PsiClass>(relaxed = true)
+        every { basePsi.qualifiedName } returns "com.example.Base"
+        val baseFile = mockk<VirtualFile>(relaxed = true)
+
+        mockkObject(ActionRunners)
+        every { ActionRunners.runSmartBackground(project, any(), any(), any()) } answers {
+            val task = it.invocation.args[3] as (com.intellij.openapi.progress.ProgressIndicator) -> Unit
+            task(mockk(relaxed = true))
+        }
+        mockkObject(InheritanceFinder)
+        coEvery {
+            InheritanceFinder.findImplementationsFor(listOf(basePsi), project, includeAnonymous = false, includeTest = true)
+        } returns emptySet()
+        mockkObject(SmartExportUtils)
+        justRun { SmartExportUtils.exportFiles(any(), any()) }
+        mockkObject(NotificationUtils)
+        justRun { NotificationUtils.showNotification(any(), any(), any(), any()) }
+        mockkObject(DebugTracer)
+        justRun { DebugTracer.start(any()) }
+        justRun { DebugTracer.log(any()) }
+        every { DebugTracer.dump() } returns ""
+        justRun { DebugTracer.end() }
+        mockkStatic(SwingUtilities::class)
+        justRun { SwingUtilities.invokeLater(any()) }
+
+        method.invoke(action, project, baseFile, listOf(basePsi), false, true)
+
+        verify {
+            NotificationUtils.showNotification(
+                project,
+                "Export Info",
+                match { it.contains("No implementations") },
+                com.intellij.notification.NotificationType.INFORMATION
+            )
+        }
+        verify {
+            SmartExportUtils.exportFiles(project, match { files -> files.size == 1 && files[0] == baseFile })
         }
     }
 }

@@ -2,6 +2,7 @@ package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.gitignor
 
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.gitignore.GitignoreParser.MatchResult
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
@@ -15,8 +16,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.MethodSource
-import java.nio.file.FileSystems
-import java.nio.file.InvalidPathException
 import java.util.stream.Stream
 
 class GitignoreParserTest {
@@ -156,6 +155,29 @@ class GitignoreParserTest {
         // Using an invalid path character (on most systems) to trigger an exception
         val result = gitignoreParser.matches("file:with:invalid:chars", false)
         assertFalse(result, "Should return false when path creation fails")
+    }
+
+    @Test
+    fun `matchResult exposes negation result`() {
+        val gitignoreContent = """
+            *.log
+            !debug.log
+        """.trimIndent()
+        every { VfsUtilCore.loadText(mockGitignoreFile) } returns gitignoreContent
+        gitignoreParser = GitignoreParser(mockGitignoreFile)
+
+        val result = gitignoreParser.matchResult("debug.log", false)
+        assertEquals(MatchResult.MATCH_NEGATE, result)
+    }
+
+    @Test
+    fun `matchResult handles complex extension glob`() {
+        every { VfsUtilCore.loadText(mockGitignoreFile) } returns "doc/**/*.pdf"
+        gitignoreParser = GitignoreParser(mockGitignoreFile)
+
+        val result = gitignoreParser.matchResult("doc/guides/user/manual.pdf", false)
+
+        assertEquals(MatchResult.MATCH_IGNORE, result)
     }
 
     /**

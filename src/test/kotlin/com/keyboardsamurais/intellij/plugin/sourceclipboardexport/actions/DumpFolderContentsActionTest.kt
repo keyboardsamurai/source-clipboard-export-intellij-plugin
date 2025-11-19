@@ -4,18 +4,27 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.ide.CopyPasteManager
+import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceClipboardExportSettings
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.ExportHistory
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.SourceExporter
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.gitignore.HierarchicalGitignoreParser
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.ui.ExportNotificationPresenter
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.StringUtils
+import io.mockk.Runs
+import io.mockk.coEvery
 import io.mockk.every
+import io.mockk.just
 import io.mockk.justRun
 import io.mockk.mockk
+import io.mockk.mockkConstructor
 import io.mockk.mockkObject
 import io.mockk.mockkStatic
+import io.mockk.unmockkConstructor
 import io.mockk.unmockkObject
 import io.mockk.unmockkStatic
 import io.mockk.verify
@@ -81,6 +90,127 @@ class DumpFolderContentsActionTest {
 
                 // Then - action should handle gracefully with proper error message
                 // This tests the early return branch in actionPerformed
+        }
+
+        @Test
+        fun `actionPerformed shows empty content warning`() {
+                val settings = SourceClipboardExportSettings()
+                SourceClipboardExportSettings.setTestInstance(settings)
+                try {
+                        every { event.project } returns project
+                        every { event.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) } returns arrayOf(file)
+                        every { file.isDirectory } returns false
+
+                        mockkStatic(ProgressManager::class)
+                        val progressManager = mockk<ProgressManager>()
+                        every { ProgressManager.getInstance() } returns progressManager
+                        every { progressManager.run(any<Task.Backgroundable>()) } answers {
+                                val task = invocation.args[0] as Task.Backgroundable
+                                val indicator = mockk<ProgressIndicator>(relaxed = true)
+                                task.run(indicator)
+                        }
+
+                        mockkConstructor(SourceExporter::class)
+                        val emptyResult =
+                                SourceExporter.ExportResult(
+                                        content = "",
+                                        processedFileCount = 0,
+                                        excludedByFilterCount = 0,
+                                        excludedBySizeCount = 0,
+                                        excludedByBinaryContentCount = 0,
+                                        excludedByIgnoredNameCount = 0,
+                                        excludedByGitignoreCount = 0,
+                                        excludedExtensions = emptySet(),
+                                        limitReached = false,
+                                        includedPaths = emptyList()
+                                )
+                        coEvery { anyConstructed<SourceExporter>().exportSources(any()) } returns emptyResult
+
+                        mockkConstructor(ExportNotificationPresenter::class)
+                        every { anyConstructed<ExportNotificationPresenter>().showEmptyContentWarning(settings.state) } just Runs
+
+                        mockkStatic(CopyPasteManager::class)
+                        val copyPasteManager = mockk<CopyPasteManager>(relaxed = true)
+                        every { CopyPasteManager.getInstance() } returns copyPasteManager
+
+                        action.actionPerformed(event)
+
+                        verify { anyConstructed<ExportNotificationPresenter>().showEmptyContentWarning(settings.state) }
+                        verify(exactly = 0) { copyPasteManager.setContents(any()) }
+                } finally {
+                        SourceClipboardExportSettings.setTestInstance(null)
+                        unmockkStatic(ProgressManager::class)
+                        unmockkConstructor(SourceExporter::class)
+                        unmockkConstructor(ExportNotificationPresenter::class)
+                        unmockkStatic(CopyPasteManager::class)
+                }
+        }
+
+        @Test
+        fun `actionPerformed copies content and reports limit`() {
+                val settings = SourceClipboardExportSettings()
+                SourceClipboardExportSettings.setTestInstance(settings)
+                try {
+                        every { event.project } returns project
+                        every { event.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) } returns arrayOf(file)
+                        every { file.isDirectory } returns false
+
+                        mockkStatic(ProgressManager::class)
+                        val progressManager = mockk<ProgressManager>()
+                        every { ProgressManager.getInstance() } returns progressManager
+                        every { progressManager.run(any<Task.Backgroundable>()) } answers {
+                                val task = invocation.args[0] as Task.Backgroundable
+                                val indicator = mockk<ProgressIndicator>(relaxed = true)
+                                task.run(indicator)
+                        }
+
+                        mockkConstructor(SourceExporter::class)
+                        val exportResult =
+                                SourceExporter.ExportResult(
+                                        content = "body",
+                                        processedFileCount = 2,
+                                        excludedByFilterCount = 0,
+                                        excludedBySizeCount = 0,
+                                        excludedByBinaryContentCount = 0,
+                                        excludedByIgnoredNameCount = 0,
+                                        excludedByGitignoreCount = 0,
+                                        excludedExtensions = emptySet(),
+                                        limitReached = true,
+                                        includedPaths = listOf("src/Main.kt")
+                                )
+                        coEvery { anyConstructed<SourceExporter>().exportSources(any()) } returns exportResult
+
+                        mockkConstructor(ExportNotificationPresenter::class)
+                        every { anyConstructed<ExportNotificationPresenter>().showSuccessNotification(any(), any(), any()) } just Runs
+                        every { anyConstructed<ExportNotificationPresenter>().showLimitReachedNotification(any()) } just Runs
+
+                        mockkStatic(CopyPasteManager::class)
+                        val copyPasteManager = mockk<CopyPasteManager>(relaxed = true)
+                        every { CopyPasteManager.getInstance() } returns copyPasteManager
+                        justRun { copyPasteManager.setContents(any()) }
+
+                        mockkObject(StringUtils)
+                        every { StringUtils.estimateTokensWithSubwordHeuristic(any()) } returns 10
+
+                        mockkObject(ExportHistory.Companion)
+                        val history = mockk<ExportHistory>(relaxed = true)
+                        every { ExportHistory.getInstance(project) } returns history
+
+                        action.actionPerformed(event)
+
+                        verify { copyPasteManager.setContents(any()) }
+                        verify { anyConstructed<ExportNotificationPresenter>().showSuccessNotification(exportResult, "0.0KB", "10") }
+                        verify { anyConstructed<ExportNotificationPresenter>().showLimitReachedNotification(settings.state.fileCount) }
+                        verify { history.addExport(exportResult.processedFileCount, any(), 10, exportResult.includedPaths) }
+                } finally {
+                        SourceClipboardExportSettings.setTestInstance(null)
+                        unmockkStatic(ProgressManager::class)
+                        unmockkConstructor(SourceExporter::class)
+                        unmockkConstructor(ExportNotificationPresenter::class)
+                        unmockkStatic(CopyPasteManager::class)
+                        unmockkObject(StringUtils)
+                        unmockkObject(ExportHistory.Companion)
+                }
         }
 
         @Test

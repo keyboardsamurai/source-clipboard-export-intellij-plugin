@@ -1,8 +1,22 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util
 
+import com.intellij.openapi.application.Application
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ContentIterator
+import com.intellij.openapi.roots.ProjectFileIndex
+import com.intellij.openapi.util.Computable
+import com.intellij.openapi.util.ThrowableComputable
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.psi.PsiFile
+import com.intellij.psi.PsiManager
+import com.intellij.psi.search.GlobalSearchScope
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkAll
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -88,5 +102,67 @@ class InheritanceFinderTest {
 
         assertEquals("JAVA", method.invoke(InheritanceFinder, javaFile).toString())
         assertEquals("TSX", method.invoke(InheritanceFinder, tsxFile).toString())
+    }
+
+    @Test
+    fun `findImplementations discovers TypeScript inheritors`() = runBlocking {
+        val project = mockk<Project>(relaxed = true)
+        mockkStatic(GlobalSearchScope::class)
+        every { GlobalSearchScope.projectScope(project) } returns mockk(relaxed = true)
+
+        mockkStatic(ReadAction::class)
+        every { ReadAction.compute(any<ThrowableComputable<*, *>>()) } answers {
+            val computable = it.invocation.args[0] as ThrowableComputable<Any?, Exception>
+            computable.compute()
+        }
+
+        mockkStatic(ApplicationManager::class)
+        val app = mockk<Application>(relaxed = true)
+        every { ApplicationManager.getApplication() } returns app
+        every { app.runReadAction(any<Computable<*>>()) } answers {
+            val computable = it.invocation.args[0] as Computable<*>
+            computable.compute()
+        }
+
+        mockkStatic(ProjectFileIndex::class)
+        val fileIndex = mockk<ProjectFileIndex>()
+        every { ProjectFileIndex.getInstance(project) } returns fileIndex
+
+        mockkStatic(PsiManager::class)
+        val psiManager = mockk<PsiManager>()
+        every { PsiManager.getInstance(project) } returns psiManager
+
+        val baseFile = mockVirtualFile("BaseWidget.ts")
+        val implFile = mockVirtualFile("Button.ts")
+        val basePsi = mockk<PsiFile>()
+        val implPsi = mockk<PsiFile>()
+        every { basePsi.virtualFile } returns baseFile
+        every { implPsi.virtualFile } returns implFile
+        every { psiManager.findFile(baseFile) } returns basePsi
+        every { psiManager.findFile(implFile) } returns implPsi
+        every { basePsi.text } returns "export class BaseWidget {}"
+        every { implPsi.text } returns "class Button extends BaseWidget {}"
+
+        every { fileIndex.iterateContent(any()) } answers {
+            val iterator = it.invocation.args[0] as ContentIterator
+            iterator.processFile(implFile)
+            true
+        }
+
+        val implementations = InheritanceFinder.findImplementations(arrayOf(baseFile), project)
+
+        assertEquals(setOf(implFile), implementations)
+        unmockkAll()
+    }
+
+    private fun mockVirtualFile(name: String): VirtualFile {
+        val vf = mockk<VirtualFile>(relaxed = true)
+        every { vf.name } returns name
+        every { vf.extension } returns name.substringAfterLast('.', "ts")
+        every { vf.nameWithoutExtension } returns name.substringBeforeLast('.')
+        every { vf.isDirectory } returns false
+        every { vf.isValid } returns true
+        every { vf.path } returns "/repo/$name"
+        return vf
     }
 }

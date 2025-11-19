@@ -125,4 +125,65 @@ class SmartExportUtilsTest {
         verify { copyPasteManager.setContents(any()) }
         verify { history.addExport(any(), any(), any(), any()) }
     }
+
+    @Test
+    fun `exportFiles notifies failure when exporter throws in unit test mode`() {
+        mockkStatic(ApplicationManager::class)
+        val application = mockk<Application>(relaxed = true)
+        every { application.isUnitTestMode } returns true
+        every { ApplicationManager.getApplication() } returns application
+
+        coEvery { anyConstructed<SourceExporter>().exportSources(any()) } throws IllegalStateException("boom")
+
+        SmartExportUtils.exportFiles(project, arrayOf(sourceFile))
+
+        verify {
+            NotificationUtils.showNotification(
+                project,
+                "Export failed",
+                match { it.contains("boom") },
+                com.intellij.notification.NotificationType.ERROR
+            )
+        }
+    }
+
+    @Test
+    fun `exportFiles surfaces error notification when runProcess fails`() {
+        mockkStatic(ApplicationManager::class)
+        mockkStatic(ProgressManager::class)
+        mockkStatic(CopyPasteManager::class)
+
+        val application = mockk<Application>(relaxed = true)
+        every { application.isUnitTestMode } returns false
+        every { ApplicationManager.getApplication() } returns application
+        every { application.invokeLater(any()) } answers { firstArg<Runnable>().run() }
+
+        val progressManager = mockk<ProgressManager>()
+        every { ProgressManager.getInstance() } returns progressManager
+        every { progressManager.progressIndicator } returns null
+        every {
+            progressManager.runProcessWithProgressSynchronously(any(), any(), any(), any<Project>())
+        } answers {
+            val runnable = firstArg<Runnable>()
+            runnable.run()
+            true
+        }
+
+        coEvery { anyConstructed<SourceExporter>().exportSources(any()) } throws IllegalStateException("explode")
+
+        val copyPasteManager = mockk<CopyPasteManager>(relaxed = true)
+        every { CopyPasteManager.getInstance() } returns copyPasteManager
+
+        SmartExportUtils.exportFiles(project, arrayOf(sourceFile))
+
+        verify {
+            NotificationUtils.showNotification(
+                project,
+                "Export failed",
+                match { it.contains("explode") },
+                com.intellij.notification.NotificationType.ERROR
+            )
+        }
+        verify(exactly = 0) { copyPasteManager.setContents(any()) }
+    }
 }

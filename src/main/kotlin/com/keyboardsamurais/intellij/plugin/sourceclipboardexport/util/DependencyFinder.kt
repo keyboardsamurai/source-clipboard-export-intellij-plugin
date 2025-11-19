@@ -98,17 +98,37 @@ object DependencyFinder {
         
         LOG.info("Phase 1 (Text Search) found ${candidateFiles.size} candidates, ${candidatesToProcess.size} to process in ${System.currentTimeMillis() - startTime}ms.")
 
-        // --- Phase 2: Accurate PSI Search on the Candidate Set ---
+        val result = runPsiVerificationPhase(
+            files = files,
+            project = project,
+            candidatesToProcess = candidatesToProcess,
+            alreadyIncludedFiles = alreadyIncludedFiles,
+            maxResults = maxResults
+        )
+        val totalTime = System.currentTimeMillis() - startTime
+        LOG.info("Phase 2 (PSI Search) completed. Found ${result.size} verified dependent files. Total time: ${totalTime}ms.")
+
+        dependentsCache[cacheKey] = result
+
+        return@withContext result
+    }
+
+    internal suspend fun runPsiVerificationPhase(
+        files: Array<VirtualFile>,
+        project: Project,
+        candidatesToProcess: Set<VirtualFile>,
+        alreadyIncludedFiles: Set<VirtualFile>,
+        maxResults: Int
+    ): Set<VirtualFile> {
+        if (candidatesToProcess.isEmpty()) return emptySet()
         val finalDependents = ConcurrentHashMap<VirtualFile, Boolean>()
         val resultsFound = AtomicInteger(0)
         val psiManager = PsiManager.getInstance(project)
 
-        // Create a specific, narrow search scope from the candidate files to process
         val searchScope = ReadAction.compute<GlobalSearchScope, Exception> {
             GlobalSearchScope.filesScope(project, candidatesToProcess)
         }
-        
-        // Limit concurrent PSI operations to prevent IDE freeze
+
         val concurrencyLimit = Config.maxConcurrentPsiSearches
         val semaphore = Semaphore(concurrencyLimit)
 
@@ -118,15 +138,12 @@ object DependencyFinder {
                 async {
                     semaphore.acquire()
                     try {
-                        // Check for cancellation
                         ProgressManager.checkCanceled()
-                        
-                        // Early termination if we've found enough results
+
                         if (resultsFound.get() >= maxResults) {
                             return@async
                         }
-                        
-                        // Get referenceable elements from the source file
+
                         val elementsToSearch = ReadAction.compute<List<com.intellij.psi.PsiElement>, Exception> {
                             val psiFile = psiManager.findFile(file)
                             if (psiFile != null) findReferenceableElementsOptimized(psiFile) else emptyList()
@@ -134,13 +151,11 @@ object DependencyFinder {
 
                         if (elementsToSearch.isEmpty()) return@async
 
-                        // Process elements in batches for better performance
                         elementsToSearch.chunked(Config.elementBatchSize).forEach { batch ->
-                            // Check cancellation between batches
                             ProgressManager.checkCanceled()
-                            
+
                             if (resultsFound.get() >= maxResults) return@forEach
-                            
+
                             val references = ReadAction.compute<List<VirtualFile>, Exception> {
                                 batch.flatMap { element ->
                                     ReferencesSearch.search(element, searchScope, false)
@@ -149,17 +164,17 @@ object DependencyFinder {
                                         .take(maxResults - resultsFound.get())
                                 }
                             }
-                            
-                            references.forEach { 
+
+                            references.forEach {
                                 if (finalDependents.putIfAbsent(it, true) == null) {
                                     resultsFound.incrementAndGet()
                                 }
                             }
                         }
                     } catch (e: ProcessCanceledException) {
-                        throw e // Re-throw to allow proper cancellation
+                        throw e
                     } catch (e: CancellationException) {
-                        throw e // Re-throw to allow proper cancellation
+                        throw e
                     } catch (e: Exception) {
                         LOG.error("Error during PSI search phase for file ${file.name}", e)
                     } finally {
@@ -170,13 +185,7 @@ object DependencyFinder {
             jobs.awaitAll()
         }
 
-        val result = finalDependents.keys.toSet()
-        val totalTime = System.currentTimeMillis() - startTime
-        LOG.info("Phase 2 (PSI Search) completed. Found ${result.size} verified dependent files. Total time: ${totalTime}ms.")
-
-        dependentsCache[cacheKey] = result
-
-        return@withContext result
+        return finalDependents.keys.toSet()
     }
 
     /**
