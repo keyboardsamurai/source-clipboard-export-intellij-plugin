@@ -130,16 +130,14 @@ class ExtendedTestFinderTest {
 
         mockkStatic(ReadAction::class)
         every { ReadAction.compute(any<ThrowableComputable<Collection<VirtualFile>, Exception>>()) } answers {
-            val computable = it.invocation.args[0] as ThrowableComputable<Collection<VirtualFile>, Exception>
-            computable.compute()
+            firstArg<ThrowableComputable<Collection<VirtualFile>, Exception>>().compute()
         }
 
         mockkStatic(ApplicationManager::class)
         val app = mockk<Application>(relaxed = true)
         every { ApplicationManager.getApplication() } returns app
         every { app.runReadAction(any<Computable<*>>()) } answers {
-            val computable = it.invocation.args[0] as Computable<*>
-            computable.compute()
+            firstArg<Computable<*>>().compute()
         }
 
         mockkStatic(ProjectFileIndex::class)

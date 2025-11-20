@@ -11,9 +11,7 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.FileUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
@@ -53,7 +51,7 @@ class FileTraverser(
             roots.forEach { file ->
                 launch(scopeJob + limitedDispatcher) {
                     ensureActive()
-                    processEntry(file, this, scopeJob, visitedFiles, onFileFound)
+                    processEntry(file, this, visitedFiles, onFileFound)
                 }
             }
             scopeJob.children.forEach { it.join() }
@@ -65,7 +63,6 @@ class FileTraverser(
     private suspend fun processEntry(
             file: VirtualFile,
             scope: CoroutineScope,
-            parentJob: Job,
             visitedFiles: MutableSet<VirtualFile>,
             onFileFound: suspend (VirtualFile, FileProperties, String) -> Unit
     ) {
@@ -83,7 +80,6 @@ class FileTraverser(
 
         if (fileProps.isDirectory) {
             if (hasReachedFileLimit()) {
-                if (parentJob.isActive) parentJob.cancel("File limit reached")
                 return
             }
 
@@ -100,11 +96,10 @@ class FileTraverser(
             val children = ReadAction.compute<Array<VirtualFile>?, Exception> { file.children }
             children?.sortedBy { it.path }?.forEach { child ->
                 if (hasReachedFileLimit()) {
-                    if (parentJob.isActive) parentJob.cancel("File limit reached")
                     return@forEach
                 }
                 scope.ensureActive()
-                processEntry(child, scope, parentJob, visitedFiles, onFileFound)
+                processEntry(child, scope, visitedFiles, onFileFound)
             }
             return
         }

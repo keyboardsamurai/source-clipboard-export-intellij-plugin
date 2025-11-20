@@ -100,7 +100,7 @@ class ExportImplementationsAtCaretActionTest {
 
         mockkObject(ActionRunners)
         every { ActionRunners.runSmartBackground(project, any(), any(), any()) } answers {
-            val task = it.invocation.args[3] as (com.intellij.openapi.progress.ProgressIndicator) -> Unit
+            val task = arg<(com.intellij.openapi.progress.ProgressIndicator) -> Unit>(3)
             task(mockk(relaxed = true))
         }
         mockkObject(InheritanceFinder)
@@ -149,7 +149,7 @@ class ExportImplementationsAtCaretActionTest {
 
         mockkObject(ActionRunners)
         every { ActionRunners.runSmartBackground(project, any(), any(), any()) } answers {
-            val task = it.invocation.args[3] as (com.intellij.openapi.progress.ProgressIndicator) -> Unit
+            val task = arg<(com.intellij.openapi.progress.ProgressIndicator) -> Unit>(3)
             task(mockk(relaxed = true))
         }
         mockkObject(InheritanceFinder)

@@ -165,8 +165,7 @@ class ExportBidirectionalDependenciesActionTest {
 
         mockkStatic(ReadAction::class)
         every { ReadAction.compute(any<ThrowableComputable<List<VirtualFile>, Exception>>()) } answers {
-            val computable = it.invocation.args[0] as ThrowableComputable<List<VirtualFile>, Exception>
-            computable.compute()
+            firstArg<ThrowableComputable<List<VirtualFile>, Exception>>().compute()
         }
 
         mockkObject(RelatedFileFinder)
@@ -212,8 +211,7 @@ class ExportBidirectionalDependenciesActionTest {
 
         mockkStatic(ReadAction::class)
         every { ReadAction.compute(any<ThrowableComputable<List<VirtualFile>, Exception>>()) } answers {
-            val computable = it.invocation.args[0] as ThrowableComputable<List<VirtualFile>, Exception>
-            computable.compute()
+            firstArg<ThrowableComputable<List<VirtualFile>, Exception>>().compute()
         }
 
         mockkObject(RelatedFileFinder)

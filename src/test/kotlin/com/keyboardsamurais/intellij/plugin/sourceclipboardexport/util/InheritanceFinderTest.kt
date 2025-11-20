@@ -112,16 +112,14 @@ class InheritanceFinderTest {
 
         mockkStatic(ReadAction::class)
         every { ReadAction.compute(any<ThrowableComputable<*, *>>()) } answers {
-            val computable = it.invocation.args[0] as ThrowableComputable<Any?, Exception>
-            computable.compute()
+            firstArg<ThrowableComputable<Any?, Exception>>().compute()
         }
 
         mockkStatic(ApplicationManager::class)
         val app = mockk<Application>(relaxed = true)
         every { ApplicationManager.getApplication() } returns app
         every { app.runReadAction(any<Computable<*>>()) } answers {
-            val computable = it.invocation.args[0] as Computable<*>
-            computable.compute()
+            firstArg<Computable<*>>().compute()
         }
 
         mockkStatic(ProjectFileIndex::class)
