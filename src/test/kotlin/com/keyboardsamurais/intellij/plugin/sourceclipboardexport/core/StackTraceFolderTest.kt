@@ -21,10 +21,10 @@ import org.mockito.Mockito.mockStatic
 import org.mockito.Mockito.`when`
 import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.junit.jupiter.MockitoSettings
-import org.mockito.quality.Strictness
 import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.reset
+import org.mockito.quality.Strictness
 import java.util.stream.Stream
 
 @ExtendWith(MockitoExtension::class)
@@ -450,7 +450,7 @@ class StackTraceFolderTest {
 						at org.springframework.test.context.web.ServletTestExecutionListener.prepareTestInstance(ServletTestExecutionListener.java:130)
 						at org.springframework.test.context.TestContextManager.prepareTestInstance(TestContextManager.java:260)
 						at org.springframework.test.context.junit.jupiter.SpringExtension.postProcessTestInstance(SpringExtension.java:163)
-    ... 12 folded frames ...""" // Exactly 4 spaces, not a tab
+    ... 12 folded frames ..."""
                 )
                 // --- END NEW TEST CASE ---
             )

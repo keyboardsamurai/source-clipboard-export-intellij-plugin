@@ -1,356 +1,484 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util
 
-import org.junit.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import com.intellij.openapi.application.Application
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ContentIterator
+import com.intellij.openapi.roots.ProjectFileIndex
+import com.intellij.openapi.roots.ProjectRootManager
+import com.intellij.openapi.util.Computable
+import com.intellij.openapi.util.ThrowableComputable
+import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.VirtualFileSystem
+import com.intellij.psi.PsiFile
+import com.intellij.psi.PsiManager
+import com.intellij.psi.search.FilenameIndex
+import com.intellij.psi.search.GlobalSearchScope
+import com.intellij.psi.search.ProjectScope
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkAll
+import io.mockk.unmockkStatic
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
 
 class RelatedFileFinderTest {
-    
-    @Test
-    fun testLanguageDetection() {
-        // Test extension-based language detection
-        assertEquals("java", detectLanguageFromExtension("java"))
-        assertEquals("kt", detectLanguageFromExtension("kt"))
-        assertEquals("js", detectLanguageFromExtension("js"))
-        assertEquals("ts", detectLanguageFromExtension("ts"))
-        assertEquals("jsx", detectLanguageFromExtension("jsx"))
-        assertEquals("tsx", detectLanguageFromExtension("tsx"))
-        assertEquals("html", detectLanguageFromExtension("html"))
-        assertEquals("css", detectLanguageFromExtension("css"))
-        assertEquals("scss", detectLanguageFromExtension("scss"))
-        assertEquals("sass", detectLanguageFromExtension("sass"))
-        assertEquals("unknown", detectLanguageFromExtension("unknown"))
+
+    private val project = mockk<Project>(relaxed = true)
+
+    @BeforeEach
+    fun setup() {
+        mockkStatic(ReadAction::class)
+        every { ReadAction.compute(any<ThrowableComputable<*, *>>()) } answers
+                {
+                    @Suppress("UNCHECKED_CAST")
+                    val computable = invocation.args[0] as ThrowableComputable<Any?, Exception>
+                    computable.compute()
+                }
+
+        mockkStatic(ApplicationManager::class)
+        mockkStatic(ProjectScope::class)
+        val app = mockk<Application>(relaxed = true)
+        every { ApplicationManager.getApplication() } returns app
+        every { app.runReadAction(any<Computable<*>>()) } answers
+                {
+                    @Suppress("UNCHECKED_CAST")
+                    val computable = invocation.args[0] as Computable<Any?>
+                    computable.compute()
+                }
+        every { ProjectScope.getProjectScope(project) } returns mockk(relaxed = true)
     }
-    
-    @Test
-    fun testTestFileDetectionJavaScript() {
-        // Jest/Vitest patterns
-        assertTrue(isTestFileByName("Component.test.js"))
-        assertTrue(isTestFileByName("Component.spec.js"))
-        assertTrue(isTestFileByName("Component.test.ts"))
-        assertTrue(isTestFileByName("Component.spec.tsx"))
-        
-        // __tests__ folder pattern
-        assertTrue(isTestFileByPath("src/components/__tests__/Component.js"))
-        assertTrue(isTestFileByPath("src/utils/__tests__/helper.ts"))
-        
-        // tests folder pattern
-        assertTrue(isTestFileByPath("src/components/tests/Component.js"))
-        
-        // Non-test files
-        assertFalse(isTestFileByName("Component.js"))
-        assertFalse(isTestFileByName("Component.tsx"))
-        assertFalse(isTestFileByName("utils.ts"))
-        assertFalse(isTestFileByPath("src/components/Component.jsx"))
+
+    @AfterEach
+    fun tearDown() {
+        unmockkAll()
     }
-    
+
     @Test
-    fun testTestFileDetectionJava() {
-        // Traditional Java test patterns
-        assertTrue(isTestFileByName("ComponentTest.java"))
-        assertTrue(isTestFileByName("ComponentTests.java"))
-        assertTrue(isTestFileByName("TestComponent.java"))
-        assertTrue(isTestFileByName("ComponentSpec.java"))
-        assertTrue(isTestFileByName("ComponentIT.java"))
-        assertTrue(isTestFileByName("ComponentIntegrationTest.java"))
-        
-        // Test folder patterns
-        assertTrue(isTestFileByPath("src/test/java/ComponentTest.java"))
-        assertTrue(isTestFileByPath("src/tests/java/ComponentTest.java"))
-        
-        // Non-test files
-        assertFalse(isTestFileByName("Component.java"))
-        assertFalse(isTestFileByName("ComponentService.java"))
-        assertFalse(isTestFileByPath("src/main/java/Component.java"))
+    fun `findTestFiles returns matches from filename index and test folders`() {
+        val sourceFile = mockFile("Component.tsx", extension = "tsx")
+        val testMatch = mockFile("Component.test.tsx")
+        val folderTestFile = mockFile("Component.tsx")
+        val testsFolder = mockFolder("__tests__", children = arrayOf(folderTestFile))
+        val parent = mockFolder("components", children = arrayOf(sourceFile, testsFolder))
+        every { sourceFile.parent } returns parent
+        every { parent.findChild("__tests__") } returns testsFolder
+        every { testsFolder.children } returns arrayOf(folderTestFile)
+
+        mockkStatic(FilenameIndex::class)
+        every {
+            FilenameIndex.getVirtualFilesByName(any<String>(), any<GlobalSearchScope>())
+        } answers
+                {
+                    val name = firstArg<String>()
+                    if (name == "Component.test.js" ||
+                                    name == "Component.test.ts" ||
+                                    name == "Component.test.jsx" ||
+                                    name == "Component.test.tsx"
+                    ) {
+                        setOf(testMatch)
+                    } else emptySet()
+                }
+
+        val files = RelatedFileFinder.findTestFiles(project, sourceFile)
+
+        assertTrue(files.contains(folderTestFile))
     }
-    
+
     @Test
-    fun testImportPatternExtractionJavaScript() {
-        val jsCode = """
-            import React from 'react';
-            import { Component, useState } from 'react';
-            import './Component.css';
-            import utils from '../utils/helper';
-            import type { Props } from './types';
-            
-            const dynamicImport = import('./dynamic-component');
-            const Component = require('./legacy-component');
-            
-            export { default } from './reexport';
+    fun `findCurrentPackageFiles includes index and style resources`() {
+        val jsxFile = mockFile("Widget.tsx", extension = "tsx")
+        val indexFile = mockFile("index.ts")
+        val styleFile = mockFile("Widget.module.css")
+        val siblingFile = mockFile("Widget.test.tsx")
+        val parent =
+                mockFolder(
+                        "components",
+                        children = arrayOf(jsxFile, siblingFile, indexFile, styleFile)
+                )
+        every { jsxFile.parent } returns parent
+        every { parent.findChild("index.js") } returns null
+        every { parent.findChild("index.ts") } returns indexFile
+        every { parent.findChild("Widget.css") } returns null
+        every { parent.findChild("Widget.scss") } returns null
+        every { parent.findChild("Widget.sass") } returns null
+        every { parent.findChild("Widget.module.css") } returns styleFile
+
+        val result = RelatedFileFinder.findCurrentPackageFiles(jsxFile)
+
+        assertTrue(result.contains(indexFile))
+        assertTrue(result.contains(styleFile))
+        assertTrue(result.contains(siblingFile))
+    }
+
+    @Test
+    fun `findRecentChanges filters by timestamp`() {
+        val recentFile = mockFile("Recent.kt")
+        every { recentFile.timeStamp } returns System.currentTimeMillis()
+        val oldFile = mockFile("Old.kt")
+        every { oldFile.timeStamp } returns System.currentTimeMillis() - 7 * 24 * 60 * 60 * 1000
+
+        mockkStatic(ProjectFileIndex::class)
+        val index = mockk<ProjectFileIndex>()
+        every { ProjectFileIndex.getInstance(project) } returns index
+        every { index.iterateContent(any()) } answers
+                {
+                    val iterator = firstArg<ContentIterator>()
+                    iterator.processFile(recentFile)
+                    iterator.processFile(oldFile)
+                    true
+                }
+
+        val files = RelatedFileFinder.findRecentChanges(project, hours = 24)
+
+        assertEquals(listOf(recentFile), files)
+    }
+
+    @Test
+    fun `findConfigFiles merges base and language configs`() {
+        mockkStatic(ProjectRootManager::class)
+        val projectRootManager = mockk<ProjectRootManager>()
+        every { ProjectRootManager.getInstance(project) } returns projectRootManager
+
+        val projectRoot = mockFolder("root")
+        every { projectRootManager.contentRoots } returns arrayOf(projectRoot)
+
+        val moduleDir = mockFolder("module")
+        val sourceFile = mockFile("Component.tsx")
+        every { sourceFile.parent } returns moduleDir
+
+        val packageJson = mockFile("package.json")
+        val tsconfig = mockFile("tsconfig.json")
+        val eslint = mockFile(".eslintrc.json")
+        val dockerfile = mockFile("Dockerfile")
+        every { projectRoot.findChild("package.json") } returns packageJson
+        every { projectRoot.findChild("tsconfig.json") } returns tsconfig
+        every { moduleDir.findChild(".eslintrc.json") } returns eslint
+        every { moduleDir.findChild("Dockerfile") } returns dockerfile
+
+        val configs = RelatedFileFinder.findConfigFiles(project, sourceFile)
+
+        assertTrue(configs.containsAll(listOf(packageJson, tsconfig, eslint, dockerfile)))
+    }
+
+    @Test
+    fun `findDirectImports resolves relative and alias imports`() {
+        mockkStatic(ProjectRootManager::class)
+        mockkStatic(PsiManager::class)
+        val projectRootManager = mockk<ProjectRootManager>()
+        every { ProjectRootManager.getInstance(project) } returns projectRootManager
+        val projectRoot = mockFolder("root")
+        val srcRoot = mockFolder("src")
+        every { projectRootManager.contentRoots } returns arrayOf(projectRoot)
+        every { projectRoot.findChild("src") } returns srcRoot
+
+        val sourceFile = mockFile("Card.tsx")
+        val componentDir = mockFolder("components")
+        every { sourceFile.parent } returns componentDir
+
+        val buttonFile = mockFile("Button.tsx")
+        val themeFile = mockFile("theme.ts")
+        every { componentDir.findFileByRelativePath(any<String>()) } returns null
+        every { componentDir.findFileByRelativePath("./Button.tsx") } returns buttonFile
+        every { srcRoot.findFileByRelativePath(any<String>()) } returns null
+        every { srcRoot.findFileByRelativePath("styles/theme.ts") } returns themeFile
+
+        val psiManager = mockk<PsiManager>()
+        every { PsiManager.getInstance(project) } returns psiManager
+        val psiFile = mockk<PsiFile>()
+        every { psiManager.findFile(sourceFile) } returns psiFile
+        every { psiFile.virtualFile } returns sourceFile
+        every { psiFile.text } returns
+                """
+            import Button from "./Button"
+            import theme from "@/styles/theme"
         """.trimIndent()
-        
-        val imports = extractImportsFromText(jsCode, "javascript")
-        
-        assertTrue(imports.contains("react"))
-        assertTrue(imports.contains("./Component.css"))
-        assertTrue(imports.contains("../utils/helper"))
-        assertTrue(imports.contains("./types"))
-        assertTrue(imports.contains("./dynamic-component"))
-        assertTrue(imports.contains("./legacy-component"))
-        assertTrue(imports.contains("./reexport"))
+
+        val imports = RelatedFileFinder.findDirectImports(project, sourceFile)
+
+        assertEquals(setOf(buttonFile, themeFile), imports.toSet())
     }
-    
+
     @Test
-    fun testImportPatternExtractionTypeScript() {
-        val tsCode = """
-            import { Observable } from 'rxjs';
-            import * as React from 'react';
-            import type { User } from '@/types/user';
-            import './styles.scss';
-            
-            // Dynamic imports
-            const LazyComponent = () => import('./LazyComponent');
-        """.trimIndent()
-        
-        val imports = extractImportsFromText(tsCode, "typescript")
-        
-        assertTrue(imports.contains("rxjs"))
-        assertTrue(imports.contains("react"))
-        assertTrue(imports.contains("@/types/user"))
-        assertTrue(imports.contains("./styles.scss"))
-        assertTrue(imports.contains("./LazyComponent"))
+    fun `findTransitiveImports traverses nested dependencies`() {
+        mockkStatic(ProjectRootManager::class)
+        mockkStatic(PsiManager::class)
+        val projectRootManager = mockk<ProjectRootManager>()
+        every { ProjectRootManager.getInstance(project) } returns projectRootManager
+        val projectRoot = mockFolder("root")
+        every { projectRootManager.contentRoots } returns arrayOf(projectRoot)
+
+        val psiManager = mockk<PsiManager>()
+        every { PsiManager.getInstance(project) } returns psiManager
+
+        val sourceFile = mockFile("Component.ts")
+        val helperFile = mockFile("helper.ts")
+        val utilFile = mockFile("util.ts")
+        val componentDir = mockFolder("components")
+        val helperDir = mockFolder("helpers")
+        every { sourceFile.parent } returns componentDir
+        every { helperFile.parent } returns helperDir
+
+        every { componentDir.findFileByRelativePath(any<String>()) } returns null
+        every { componentDir.findFileByRelativePath("./helper.ts") } returns helperFile
+        every { helperDir.findFileByRelativePath(any<String>()) } returns null
+        every { helperDir.findFileByRelativePath("./util.ts") } returns utilFile
+
+        val sourcePsi = mockk<PsiFile>()
+        val helperPsi = mockk<PsiFile>()
+        val utilPsi = mockk<PsiFile>()
+        every { psiManager.findFile(sourceFile) } returns sourcePsi
+        every { psiManager.findFile(helperFile) } returns helperPsi
+        every { psiManager.findFile(utilFile) } returns utilPsi
+
+        every { sourcePsi.virtualFile } returns sourceFile
+        every { helperPsi.virtualFile } returns helperFile
+        every { utilPsi.virtualFile } returns utilFile
+
+        every { sourcePsi.text } returns """import helper from "./helper""""
+        every { helperPsi.text } returns """import util from "./util""""
+        every { utilPsi.text } returns ""
+
+        val imports = RelatedFileFinder.findTransitiveImports(project, sourceFile)
+
+        assertEquals(setOf(helperFile, utilFile), imports.toSet())
     }
-    
+
     @Test
-    fun testImportPatternExtractionJava() {
-        val javaCode = """
-            package com.example;
-            
-            import java.util.List;
-            import static java.util.Collections.emptyList;
-            import com.example.service.UserService;
-            import com.example.model.*;
-        """.trimIndent()
-        
-        val imports = extractImportsFromText(javaCode, "java")
-        
-        assertTrue(imports.contains("java.util.List"))
-        assertTrue(imports.contains("java.util.Collections"))
-        assertTrue(imports.contains("com.example.service.UserService"))
-        assertTrue(imports.contains("com.example.model"))
+    fun `resolveJavaScriptImport tries extensionless relative and absolute modules`() {
+        val srcRoot = mockFolder("src")
+        val projectRoot = mockFolder("root", children = arrayOf(srcRoot))
+        val sourceFile = mockFile("Widget.tsx")
+        val componentDir = mockFolder("components")
+        every { sourceFile.parent } returns componentDir
+
+        val buttonFile = mockFile("Button.tsx")
+        every { componentDir.findFileByRelativePath("./Button") } returns null
+        every { componentDir.findFileByRelativePath("./Button.tsx") } returns buttonFile
+
+        val childIndex = mockFile("index.tsx")
+        every { componentDir.findFileByRelativePath("./child/index.tsx") } returns childIndex
+
+        val absoluteFile = mockFile("Toolbar.ts")
+        every { srcRoot.findFileByRelativePath("components/Toolbar") } returns absoluteFile
+
+        val resolvedRelative = invokeResolveJavaScriptImport(projectRoot, sourceFile, "./Button")
+        val resolvedDirectory = invokeResolveJavaScriptImport(projectRoot, sourceFile, "./child")
+        val resolvedAbsolute =
+                invokeResolveJavaScriptImport(projectRoot, sourceFile, "components/Toolbar")
+
+        assertEquals(buttonFile, resolvedRelative)
+        assertEquals(childIndex, resolvedDirectory)
+        assertEquals(absoluteFile, resolvedAbsolute)
     }
-    
+
     @Test
-    fun testImportPatternExtractionHTML() {
-        val htmlCode = """
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <link rel="stylesheet" href="./styles.css">
-                <link href="https://cdn.example.com/bootstrap.css" rel="stylesheet">
-                <script src="./app.js"></script>
-                <script type="module" src="./modules/main.js"></script>
-            </head>
-            </html>
-        """.trimIndent()
-        
-        val imports = extractImportsFromText(htmlCode, "html")
-        
-        assertTrue(imports.contains("./styles.css"))
-        assertTrue(imports.contains("https://cdn.example.com/bootstrap.css"))
-        assertTrue(imports.contains("./app.js"))
-        assertTrue(imports.contains("./modules/main.js"))
+    fun `resolveCssImport appends extensions when missing`() {
+        val sourceFile = mockFile("styles.css")
+        val stylesFolder = mockFolder("styles")
+        every { sourceFile.parent } returns stylesFolder
+
+        val scssFile = mockFile("colors.scss")
+        every { stylesFolder.findFileByRelativePath("./colors") } returns null
+        every { stylesFolder.findFileByRelativePath("./colors.scss") } returns scssFile
+
+        val resolved = invokeResolveCssImport(sourceFile, "./colors")
+
+        assertEquals(scssFile, resolved)
     }
-    
+
     @Test
-    fun testImportPatternExtractionCSS() {
-        val cssCode = """
-            @import url("./base.css");
-            @import './variables.scss';
-            @import "https://fonts.googleapis.com/css2?family=Inter";
-            
-            .component {
-                background: url('./images/bg.png');
-            }
-        """.trimIndent()
-        
-        val imports = extractImportsFromText(cssCode, "css")
-        
-        assertTrue(imports.contains("./base.css"))
-        assertTrue(imports.contains("./variables.scss"))
-        assertTrue(imports.contains("https://fonts.googleapis.com/css2?family=Inter"))
+    fun `resolveJavaScriptImport handles Next alias`() {
+        val projectRoot = mockFolder("root")
+        val srcRoot = mockFolder("src")
+        every { projectRoot.findChild("src") } returns srcRoot
+        val sourceFile = mockFile("Page.tsx")
+        val aliasTarget = mockFile("components/Header.tsx")
+        every { srcRoot.findFileByRelativePath("components/Header.tsx") } returns aliasTarget
+
+        val resolved =
+                invokeResolveJavaScriptImport(projectRoot, sourceFile, "@/components/Header.tsx")
+
+        assertEquals(aliasTarget, resolved)
     }
-    
+
     @Test
-    fun testReactNextJSPatterns() {
-        // Next.js specific imports
-        val nextJsCode = """
-            import Link from 'next/link';
-            import Image from 'next/image';
-            import { useRouter } from 'next/router';
-            import '@/styles/globals.css';
-            import config from '@/config/app';
-        """.trimIndent()
-        
-        val imports = extractImportsFromText(nextJsCode, "javascript")
-        
-        assertTrue(imports.contains("next/link"))
-        assertTrue(imports.contains("next/image"))
-        assertTrue(imports.contains("next/router"))
-        assertTrue(imports.contains("@/styles/globals.css"))
-        assertTrue(imports.contains("@/config/app"))
+    fun `resolveJavaKotlinImport removes underscores in packages`() {
+        val projectRoot = mockFolder("root")
+        val javaFile = mockFile("MyService.java")
+        every {
+            projectRoot.findFileByRelativePath("src/main/java/com/example/My_Service.java")
+        } returns null
+        every {
+            projectRoot.findFileByRelativePath("src/main/java/com/example/MyService.java")
+        } returns javaFile
+
+        val resolved = invokeResolveJavaKotlinImport(projectRoot, "com.example.My_Service")
+
+        assertEquals(javaFile, resolved)
     }
-    
+
     @Test
-    fun testConfigFileDetection() {
-        // JavaScript/TypeScript config files
-        val jsConfigs = listOf(
-            "package.json", "tsconfig.json", "next.config.js", 
-            "webpack.config.js", "jest.config.js", ".eslintrc.json",
-            "tailwind.config.ts", "vite.config.js"
-        )
-        
-        jsConfigs.forEach { config ->
-            assertTrue(isJavaScriptConfigFile(config), "Should recognize $config as JS/TS config")
-        }
-        
-        // Java/Kotlin config files
-        val javaConfigs = listOf(
-            "pom.xml", "build.gradle", "build.gradle.kts",
-            "application.properties", "application.yml"
-        )
-        
-        javaConfigs.forEach { config ->
-            assertTrue(isJavaConfigFile(config), "Should recognize $config as Java/Kotlin config")
-        }
-        
-        // General config files
-        val generalConfigs = listOf(
-            "Dockerfile", "docker-compose.yml", ".env"
-        )
-        
-        generalConfigs.forEach { config ->
-            assertTrue(isGeneralConfigFile(config), "Should recognize $config as general config")
-        }
+    fun `resolvePythonImport tries module and package files`() {
+        val projectRoot = mockFolder("root")
+        val moduleFile = mockFile("helpers/utils.py")
+        val packageInit = mockFile("services/api/__init__.py")
+        every { projectRoot.findFileByRelativePath("helpers/utils.py") } returns moduleFile
+        every { projectRoot.findFileByRelativePath("helpers.utils.py") } returns null
+        every { projectRoot.findFileByRelativePath("helpers/utils/__init__.py") } returns null
+        every { projectRoot.findFileByRelativePath("services/api.py") } returns null
+        every { projectRoot.findFileByRelativePath("services/api/__init__.py") } returns packageInit
+
+        val moduleResult = invokeResolvePythonImport(projectRoot, "helpers.utils")
+        val packageResult = invokeResolvePythonImport(projectRoot, "services.api")
+
+        assertEquals(moduleFile, moduleResult)
+        assertEquals(packageInit, packageResult)
     }
-    
+
     @Test
-    fun testStyleFileAssociation() {
-        // React component style associations
-        assertTrue(isStyleFileForComponent("Button.jsx", "Button.css"))
-        assertTrue(isStyleFileForComponent("Button.tsx", "Button.module.css"))
-        assertTrue(isStyleFileForComponent("Header.jsx", "Header.scss"))
-        assertTrue(isStyleFileForComponent("Modal.tsx", "Modal.module.scss"))
-        
-        // Non-matching cases
-        assertFalse(isStyleFileForComponent("Button.jsx", "Modal.css"))
-        assertFalse(isStyleFileForComponent("Button.tsx", "styles.css"))
+    fun `resolveHtmlReference handles absolute and relative paths`() {
+        val fileSystem = mockk<VirtualFileSystem>(relaxed = true)
+        val sourceFile = mockFile("index.html")
+        every { sourceFile.fileSystem } returns fileSystem
+        val parent = mockFolder("templates")
+        every { sourceFile.parent } returns parent
+
+        val absoluteFile = mockFile("/static/app.js")
+        val relativeFile = mockFile("styles/main.css")
+        every { fileSystem.findFileByPath("/static/app.js") } returns absoluteFile
+        every { parent.findFileByRelativePath("styles/main.css") } returns relativeFile
+
+        val absResult = invokeResolveHtmlReference(sourceFile, "/static/app.js")
+        val relResult = invokeResolveHtmlReference(sourceFile, "styles/main.css")
+
+        assertEquals(absoluteFile, absResult)
+        assertEquals(relativeFile, relResult)
     }
-    
-    // Helper methods that test the logic without IntelliJ dependencies
-    private fun detectLanguageFromExtension(extension: String): String {
-        return when (extension.lowercase()) {
-            "java" -> "java"
-            "kt", "kts" -> "kt"
-            "js", "mjs" -> "js"
-            "ts" -> "ts"
-            "jsx" -> "jsx"
-            "tsx" -> "tsx"
-            "html", "htm" -> "html"
-            "css" -> "css"
-            "scss", "sass" -> "css"
-            else -> "unknown"
-        }
+
+    @Test
+    fun `findTestFiles includes tests folder and specs`() {
+        val sourceFile = mockFile("Widget.tsx", "tsx")
+        val testsFolder = mockFolder("tests")
+        val siblingSpec = mockFile("Widget.spec.tsx")
+        val parent = mockFolder("components")
+        every { sourceFile.parent } returns parent
+        every { parent.findChild("__tests__") } returns null
+        every { parent.findChild("tests") } returns testsFolder
+        every { testsFolder.children } returns arrayOf(mockFile("Widget.tsx"))
+        every { parent.children } returns arrayOf(sourceFile, siblingSpec)
+
+        mockkStatic(FilenameIndex::class)
+        every { FilenameIndex.getVirtualFilesByName(any<String>(), any()) } returns emptySet()
+
+        val files = RelatedFileFinder.findTestFiles(project, sourceFile)
+
+        assertTrue(files.any { it.name == "Widget.tsx" })
+        assertTrue(files.contains(siblingSpec))
+        unmockkStatic(FilenameIndex::class)
     }
-    
-    private fun isTestFileByName(fileName: String): Boolean {
-        return fileName.contains(".test.") || fileName.contains(".spec.") ||
-               fileName.endsWith("Test.java") || fileName.endsWith("Tests.java") ||
-               fileName.startsWith("Test") || fileName.endsWith("IT.java") ||
-               fileName.endsWith("IntegrationTest.java")
+
+    private fun mockFile(
+            name: String,
+            extension: String? = name.substringAfterLast('.', "")
+    ): VirtualFile {
+        val vf = mockk<VirtualFile>(relaxed = true)
+        every { vf.name } returns name
+        every { vf.extension } returns extension
+        every { vf.nameWithoutExtension } returns name.substringBeforeLast('.', name)
+        every { vf.isDirectory } returns false
+        every { vf.path } returns "/repo/$name"
+        every { vf.exists() } returns true
+        return vf
     }
-    
-    private fun isTestFileByPath(path: String): Boolean {
-        return path.contains("/test/") || path.contains("/tests/") || 
-               path.contains("/__tests__/")
+
+    private fun mockFolder(name: String, children: Array<VirtualFile> = emptyArray()): VirtualFile {
+        val vf = mockk<VirtualFile>(relaxed = true)
+        every { vf.name } returns name
+        every { vf.isDirectory } returns true
+        every { vf.children } returns children
+        every { vf.path } returns "/repo/$name"
+        every { vf.exists() } returns true
+        every { vf.findChild(any<String>()) } answers
+                {
+                    val childName = invocation.args[0] as String
+                    children.firstOrNull { it.name == childName }
+                }
+        children.forEach { child -> every { child.parent } returns vf }
+        return vf
     }
-    
-    private fun extractImportsFromText(text: String, language: String): List<String> {
-        val imports = mutableListOf<String>()
-        
-        when (language) {
-            "javascript", "typescript" -> {
-                // ES6 imports
-                Regex("""import\s+.*?from\s+['"]([^'"]+)['"]""").findAll(text).forEach {
-                    imports.add(it.groupValues[1])
-                }
-                // Side effect imports
-                Regex("""import\s+['"]([^'"]+)['"]""").findAll(text).forEach {
-                    imports.add(it.groupValues[1])
-                }
-                // CommonJS
-                Regex("""require\s*\(\s*['"]([^'"]+)['"]\s*\)""").findAll(text).forEach {
-                    imports.add(it.groupValues[1])
-                }
-                // Dynamic imports
-                Regex("""import\s*\(\s*['"]([^'"]+)['"]\s*\)""").findAll(text).forEach {
-                    imports.add(it.groupValues[1])
-                }
-                // Re-exports
-                Regex("""export\s+.*?from\s+['"]([^'"]+)['"]""").findAll(text).forEach {
-                    imports.add(it.groupValues[1])
-                }
-            }
-            "java" -> {
-                Regex("""import\s+(?:static\s+)?([a-zA-Z_][a-zA-Z0-9_.]*)\s*;""").findAll(text).forEach {
-                    imports.add(it.groupValues[1])
-                }
-            }
-            "html" -> {
-                // Script tags
-                Regex("""<script[^>]+src\s*=\s*['"]([^'"]+)['"]""").findAll(text).forEach {
-                    imports.add(it.groupValues[1])
-                }
-                // Link tags
-                Regex("""<link[^>]+href\s*=\s*['"]([^'"]+)['"]""").findAll(text).forEach {
-                    imports.add(it.groupValues[1])
-                }
-            }
-            "css" -> {
-                // CSS @import
-                Regex("""@import\s+(?:url\s*\(\s*)?['"]([^'"]+)['"]""").findAll(text).forEach {
-                    imports.add(it.groupValues[1])
-                }
-            }
-        }
-        
-        return imports
+
+    private fun invokeResolveJavaScriptImport(
+            projectRoot: VirtualFile,
+            source: VirtualFile,
+            importPath: String
+    ): VirtualFile? {
+        val method =
+                RelatedFileFinder::class.java.getDeclaredMethod(
+                        "resolveJavaScriptImport",
+                        VirtualFile::class.java,
+                        VirtualFile::class.java,
+                        String::class.java
+                )
+        method.isAccessible = true
+        return method.invoke(RelatedFileFinder, projectRoot, source, importPath) as? VirtualFile
     }
-    
-    private fun isJavaScriptConfigFile(fileName: String): Boolean {
-        val jsConfigFiles = setOf(
-            "package.json", "tsconfig.json", "jsconfig.json", "webpack.config.js",
-            "vite.config.js", "vite.config.ts", "next.config.js", "next.config.mjs",
-            "tailwind.config.js", "tailwind.config.ts", "jest.config.js", "jest.config.ts",
-            "vitest.config.js", "vitest.config.ts", ".eslintrc.js", ".eslintrc.json",
-            ".prettierrc", ".prettierrc.json", "rollup.config.js", "esbuild.config.js",
-            "babel.config.js"
-        )
-        return jsConfigFiles.contains(fileName)
+
+    private fun invokeResolveCssImport(source: VirtualFile, importPath: String): VirtualFile? {
+        val method =
+                RelatedFileFinder::class.java.getDeclaredMethod(
+                        "resolveCssImport",
+                        VirtualFile::class.java,
+                        String::class.java
+                )
+        method.isAccessible = true
+        return method.invoke(RelatedFileFinder, source, importPath) as? VirtualFile
     }
-    
-    private fun isJavaConfigFile(fileName: String): Boolean {
-        val javaConfigFiles = setOf(
-            "pom.xml", "build.gradle", "build.gradle.kts",
-            "application.properties", "application.yml", "application.yaml"
-        )
-        return javaConfigFiles.contains(fileName)
+
+    private fun invokeResolvePythonImport(
+            projectRoot: VirtualFile,
+            importPath: String
+    ): VirtualFile? {
+        val method =
+                RelatedFileFinder::class.java.getDeclaredMethod(
+                        "resolvePythonImport",
+                        VirtualFile::class.java,
+                        String::class.java
+                )
+        method.isAccessible = true
+        return method.invoke(RelatedFileFinder, projectRoot, importPath) as? VirtualFile
     }
-    
-    private fun isGeneralConfigFile(fileName: String): Boolean {
-        val generalConfigFiles = setOf(
-            "Dockerfile", "docker-compose.yml", ".env", "Cargo.toml",
-            "requirements.txt", "pyproject.toml", "setup.py", "composer.json",
-            "Gemfile", "go.mod", "CMakeLists.txt"
-        )
-        return generalConfigFiles.contains(fileName)
+
+    private fun invokeResolveHtmlReference(
+            source: VirtualFile,
+            referencePath: String
+    ): VirtualFile? {
+        val method =
+                RelatedFileFinder::class.java.getDeclaredMethod(
+                        "resolveHtmlReference",
+                        VirtualFile::class.java,
+                        String::class.java
+                )
+        method.isAccessible = true
+        return method.invoke(RelatedFileFinder, source, referencePath) as? VirtualFile
     }
-    
-    private fun isStyleFileForComponent(componentFile: String, styleFile: String): Boolean {
-        val componentName = componentFile.substringBeforeLast(".")
-        val styleName = styleFile.substringBeforeLast(".")
-        
-        return styleName == componentName || styleName == "$componentName.module"
+
+    private fun invokeResolveJavaKotlinImport(
+            projectRoot: VirtualFile,
+            importPath: String
+    ): VirtualFile? {
+        val method =
+                RelatedFileFinder::class.java.getDeclaredMethod(
+                        "resolveJavaKotlinImport",
+                        VirtualFile::class.java,
+                        String::class.java
+                )
+        method.isAccessible = true
+        return method.invoke(RelatedFileFinder, projectRoot, importPath) as? VirtualFile
     }
-} 
+}

@@ -11,6 +11,13 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.ActionRun
 import git4idea.history.GitHistoryUtils
 import git4idea.repo.GitRepositoryManager
 
+/**
+ * Exports every file touched by the most recent Git commit in the current project. Useful when
+ * summarizing work for code review or assembling change descriptions.
+ *
+ * This action sits in the *Version History* group and relies on `git4idea` APIs to query commit
+ * metadata before feeding the files to [SmartExportUtils].
+ */
 class ExportLastCommitAction : AnAction() {
     
     init {
@@ -20,6 +27,11 @@ class ExportLastCommitAction : AnAction() {
     
     private val logger = Logger.getInstance(ExportLastCommitAction::class.java)
     
+    /**
+     * Reads the last commit via [GitHistoryUtils] and exports all `afterRevision` files. The heavy
+     * lifting executes inside [ActionRunners.runSmartBackground] so it respects dumb mode and
+     * reports progress.
+     */
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         ActionRunners.runSmartBackground(project, "Exporting Last Commit") { _: ProgressIndicator ->
@@ -47,6 +59,12 @@ class ExportLastCommitAction : AnAction() {
         }
     }
     
+    /**
+     * Queries every Git repository in the project for the most recent commit and returns the
+     * unioned list of changed files.
+     *
+     * @return list of valid, non-directory virtual files sorted by repo order
+     */
     private fun getFilesFromLastCommit(project: Project): List<VirtualFile> {
         val repositoryManager = GitRepositoryManager.getInstance(project)
         
@@ -71,6 +89,10 @@ class ExportLastCommitAction : AnAction() {
         }.distinct()
     }
     
+    /**
+     * Only shows the command when a project is open and at least one Git repository is present.
+     * Keeps the popup tidy inside non-VCS projects.
+     */
     override fun update(e: AnActionEvent) {
         val project = e.project
         if (project == null) {
@@ -94,6 +116,7 @@ class ExportLastCommitAction : AnAction() {
         }
     }
     
+    /** Requires BGT because `update` checks repository info. */
     override fun getActionUpdateThread(): ActionUpdateThread {
         return ActionUpdateThread.BGT
     }

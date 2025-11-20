@@ -1,11 +1,23 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions
 
+import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.ThrowableComputable
 import com.intellij.openapi.vfs.VirtualFile
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.ActionRunners
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.DependencyFinder
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.RelatedFileFinder
+import io.mockk.coEvery
 import io.mockk.every
+import io.mockk.justRun
 import io.mockk.mockk
+import io.mockk.mockkObject
+import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 import io.mockk.verify
 import org.junit.jupiter.api.AfterEach
@@ -84,9 +96,6 @@ class ExportBidirectionalDependenciesActionTest {
     fun `test action performed with user cancellation`() {
         // For now, we'll just verify that the action can be called without throwing
         // Testing dialog interactions in IntelliJ tests is complex
-        val mockFile = createMockFile("Test.kt", false)
-        val event = createMockEvent(project = project, files = arrayOf(mockFile))
-        
         // The action will show a dialog, but in tests it might not work as expected
         // Just verify no exception is thrown when there's a valid project and files
         try {
@@ -101,9 +110,6 @@ class ExportBidirectionalDependenciesActionTest {
     @Test
     fun `test action performed with direct imports choice`() {
         // Similar to above - focus on verifying the action setup rather than dialog behavior
-        val mockFile = createMockFile("Test.kt", false)
-        val event = createMockEvent(project = project, files = arrayOf(mockFile))
-        
         // Verify the action is properly configured
         assert(action.templatePresentation.text == "Include Bidirectional Dependencies")
         assert(action.templatePresentation.description == "Export selected files + dependencies + reverse dependencies")
@@ -135,6 +141,100 @@ class ExportBidirectionalDependenciesActionTest {
     @Test
     fun `test get action update thread returns BGT`() {
         assert(action.actionUpdateThread == com.intellij.openapi.actionSystem.ActionUpdateThread.BGT)
+    }
+
+    @Test
+    fun `actionPerformed exports dependencies and dependents`() {
+        val mainFile = createMockFile("Main.kt", false)
+        val helperFile = createMockFile("Helper.kt", false)
+        val event = createMockEvent(project, arrayOf(mainFile, helperFile))
+        val dependent = createMockFile("Feature.kt", false)
+        val transitiveDep = createMockFile("Dep.kt", false)
+        val reverseDep = createMockFile("Reverse.kt", false)
+
+        mockkObject(ActionRunners)
+        val indicator = mockk<ProgressIndicator>(relaxed = true)
+        every { ActionRunners.runSmartBackground(project, any(), any(), any()) } answers {
+            val task = arg<(ProgressIndicator) -> Unit>(3)
+            task(indicator)
+        }
+
+        mockkObject(DependencyFinder)
+        justRun { DependencyFinder.validateConfiguration(any()) }
+        coEvery { DependencyFinder.findDependents(any(), project, any()) } returns setOf(reverseDep)
+
+        mockkStatic(ReadAction::class)
+        every { ReadAction.compute(any<ThrowableComputable<List<VirtualFile>, Exception>>()) } answers {
+            firstArg<ThrowableComputable<List<VirtualFile>, Exception>>().compute()
+        }
+
+        mockkObject(RelatedFileFinder)
+        every { RelatedFileFinder.findTransitiveImports(project, any()) } returns listOf(transitiveDep)
+        every { RelatedFileFinder.findDirectImports(project, reverseDep) } returns listOf(dependent)
+
+        mockkObject(SmartExportUtils)
+        justRun { SmartExportUtils.exportFiles(any(), any()) }
+
+        mockkObject(NotificationUtils)
+        justRun { NotificationUtils.showNotification(any(), any(), any(), any()) }
+
+        action.actionPerformed(event)
+
+        verify {
+            SmartExportUtils.exportFiles(
+                project,
+                match { files ->
+                    files.toSet() == setOf(mainFile, helperFile, reverseDep, transitiveDep, dependent)
+                }
+            )
+        }
+        verify(exactly = 0) {
+            NotificationUtils.showNotification(project, "Export Info", any(), NotificationType.INFORMATION)
+        }
+    }
+
+    @Test
+    fun `actionPerformed shows info when nothing extra found`() {
+        val mainFile = createMockFile("Main.kt", false)
+        val event = createMockEvent(project, arrayOf(mainFile))
+
+        mockkObject(ActionRunners)
+        val indicator = mockk<ProgressIndicator>(relaxed = true)
+        every { ActionRunners.runSmartBackground(project, any(), any(), any()) } answers {
+            val task = arg<(ProgressIndicator) -> Unit>(3)
+            task(indicator)
+        }
+
+        mockkObject(DependencyFinder)
+        justRun { DependencyFinder.validateConfiguration(any()) }
+        coEvery { DependencyFinder.findDependents(any(), project, any()) } returns emptySet()
+
+        mockkStatic(ReadAction::class)
+        every { ReadAction.compute(any<ThrowableComputable<List<VirtualFile>, Exception>>()) } answers {
+            firstArg<ThrowableComputable<List<VirtualFile>, Exception>>().compute()
+        }
+
+        mockkObject(RelatedFileFinder)
+        every { RelatedFileFinder.findTransitiveImports(project, mainFile) } returns emptyList()
+        every { RelatedFileFinder.findDirectImports(project, any()) } returns emptyList()
+
+        mockkObject(SmartExportUtils)
+        justRun { SmartExportUtils.exportFiles(any(), any()) }
+
+        mockkObject(NotificationUtils)
+        justRun { NotificationUtils.showNotification(any(), any(), any(), any()) }
+
+        action.actionPerformed(event)
+
+        verify {
+            NotificationUtils.showNotification(
+                project,
+                "Export Info",
+                match { it.contains("No additional dependencies") },
+                NotificationType.INFORMATION
+            )
+        }
+        verify(exactly = 0) { SmartExportUtils.exportFiles(any(), any()) }
     }
     
     private fun createMockEvent(project: Project?, files: Array<VirtualFile>?): AnActionEvent {

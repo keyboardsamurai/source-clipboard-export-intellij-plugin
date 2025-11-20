@@ -438,6 +438,7 @@ class HierarchicalGitignoreParserTest {
 
         val cacheField = HierarchicalGitignoreParser::class.java.getDeclaredField("parserCache")
         cacheField.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
         val parserCache = cacheField.get(parser) as ConcurrentHashMap<String, GitignoreParser?>
         assertFalse(parserCache.isEmpty(), "Cache should have an entry before clearing")
 

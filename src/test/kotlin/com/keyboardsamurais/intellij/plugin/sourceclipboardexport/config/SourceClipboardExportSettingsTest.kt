@@ -27,6 +27,7 @@ class SourceClipboardExportSettingsTest {
         assertEquals(AppConstants.OutputFormat.PLAIN_TEXT, state.outputFormat)
         assertEquals(AppConstants.DEFAULT_IGNORED_NAMES, state.ignoredNames)
         assertTrue(state.filenameFilters.isEmpty(), "Filter list should be empty by default")
+        assertEquals(3, state.stackTraceSettings.minFramesToFold)
     }
 
     @Test
@@ -48,5 +49,20 @@ class SourceClipboardExportSettingsTest {
         
         // Should restore default ignored names
         assertEquals(AppConstants.DEFAULT_IGNORED_NAMES, settings.state.ignoredNames)
+    }
+
+    @Test
+    fun `test loadState enables filters when legacy state has non-empty filters`() {
+        val settings = SourceClipboardExportSettings()
+        val legacyState = SourceClipboardExportSettings.State().apply {
+            filenameFilters = mutableListOf(".kt", ".java")
+            areFiltersEnabled = false // Simulate pre-flag behavior where filters were always applied
+            hasMigratedFilterFlag = false
+        }
+
+        settings.loadState(legacyState)
+
+        assertTrue(settings.state.areFiltersEnabled, "Filters should be enabled when a legacy state has non-empty filters")
+        assertTrue(settings.state.hasMigratedFilterFlag, "Migration flag should be set after running loadState")
     }
 }

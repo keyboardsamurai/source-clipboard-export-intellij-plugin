@@ -1,8 +1,13 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions
 
+// import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceClipboardExportSettings // Keep if needed later
 import com.intellij.execution.ui.ConsoleView
 import com.intellij.notification.NotificationType
-import com.intellij.openapi.actionSystem.*
+import com.intellij.openapi.actionSystem.ActionUpdateThread
+import com.intellij.openapi.actionSystem.AnAction
+import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.actionSystem.LangDataKeys
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.Editor
@@ -11,17 +16,29 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
-// import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceClipboardExportSettings // Keep if needed later
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.config.SourceClipboardExportSettings
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.StackTraceFolder
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
-import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.StringUtils // Import StringUtils for token counting
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.StringUtils
 import java.awt.datatransfer.StringSelection
 
+/**
+ * Collapses noisy stack traces in Run/Debug consoles and places the folded output on the clipboard.
+ * The heuristics come from [StackTraceFolder] which knows how to differentiate project classes
+ * from external libraries via PSI.
+ *
+ * Available from the console context menu and marked [com.intellij.openapi.project.DumbAware] so it
+ * can run while indices are rebuilding (folding falls back to simple heuristics in that case).
+ */
 class FoldAndCopyStackTraceAction : AnAction() {
 
     private val logger = Logger.getInstance(FoldAndCopyStackTraceAction::class.java)
 
 
+    /**
+     * Enables the action when a project, editor, console, and selected text are present. Mirrors
+     * the default console context menu behavior to avoid confusing users with a disabled entry.
+     */
     override fun update(e: AnActionEvent) {
         // Retrieve necessary data from the event context
         val project: Project? = e.project
@@ -41,6 +58,10 @@ class FoldAndCopyStackTraceAction : AnAction() {
         // Optional: Keep logging for debugging if needed
         logger.trace("FoldAndCopyStackTraceAction update: project=$project, editor=$editor, hasSelection=${!selectedText.isNullOrBlank()}, consoleView=$consoleView -> isEnabled=$isEnabled")
     }
+    /**
+     * Runs the folding pipeline on a background thread, respecting cancellation from the progress
+     * manager. Clipboard interaction happens back on the EDT via [ApplicationManager.invokeLater].
+     */
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val editor = e.getData(CommonDataKeys.EDITOR) ?: return
@@ -60,12 +81,31 @@ class FoldAndCopyStackTraceAction : AnAction() {
                 indicator.text = "Analyzing stack trace..."
 
                 try {
-                    // Instantiate the folder (pass settings if needed)
-                    // Using default minFramesToFold = 3 for now
-                    val folder = StackTraceFolder(project, minFramesToFold = 3)
+                    // Load settings
+                    val settings = SourceClipboardExportSettings.getInstance().state
+                    // Instantiate the folder with robust, LLM-friendly defaults
+                    val stackSettings = settings.stackTraceSettings
+                    val folder = StackTraceFolder(
+                        project,
+                        minFramesToFold = stackSettings.minFramesToFold,
+                        keepHeadFrames = stackSettings.keepHeadFrames,
+                        keepTailFrames = stackSettings.keepTailFrames,
+                        includePackageHints = stackSettings.includePackageHints,
+                        treatEllipsisAsFoldable = stackSettings.treatEllipsisAsFoldable,
+                        preserveIndentation = true
+                    )
 
                     // Folding requires read action, which folder handles internally
-                    val foldedStackTrace = folder.foldStackTrace(selectedText)
+                    var foldedStackTrace = folder.foldStackTrace(selectedText)
+                    if (stackSettings.appendRaw) {
+                        foldedStackTrace = buildString {
+                            append(foldedStackTrace)
+                            append('\n')
+                            append("--- folded above; raw trace below ---")
+                            append('\n')
+                            append(selectedText)
+                        }
+                    }
 
                     // Calculate counts *after* folding
                     val charCount = foldedStackTrace.length

@@ -13,7 +13,11 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.Notificat
 import kotlinx.coroutines.runBlocking
 
 /**
- * Action to export files that depend on the selected files (reverse dependencies).
+ * Includes reverse dependencies for the current selection before invoking the exporter.
+ *
+ * The action is part of the *Dependencies* popup and bridges IntelliJ's [AnAction] lifecycle with
+ * our PSI-heavy [DependencyFinder] utility. It logs sized buckets for easier troubleshooting and
+ * notifies the user when the configured result limit is hit.
  */
 class ExportDependentsAction : AnAction() {
 
@@ -25,17 +29,27 @@ class ExportDependentsAction : AnAction() {
 
     private val logger = Logger.getInstance(ExportDependentsAction::class.java)
 
+    /** Uses the background thread for update calculations because they inspect the PSI selection. */
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
+    /**
+     * Displays the menu item only when at least one non-directory file is selected because reverse
+     * dependency search is meaningless for folders.
+     */
     override fun update(e: AnActionEvent) {
-        val project = e.project
-        val files = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)
-        
-        e.presentation.isEnabledAndVisible = project != null && 
-            !files.isNullOrEmpty() && 
+        e.presentation.isEnabledAndVisible = ActionUpdateSupport.hasProjectAndFiles(e) { files ->
             files.any { !it.isDirectory }
+        }
     }
 
+    /**
+     * Resolves dependent files, merges them with the original selection, and passes the result to
+     * [SmartExportUtils]. PSI work happens via [ActionRunners.runSmartBackground] which waits for
+     * smart mode so indices are up to date.
+     *
+     * @param e action context that must contain a project and selected virtual files
+     * @throws com.intellij.openapi.progress.ProcessCanceledException when users cancel the search
+     */
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val files = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) ?: return

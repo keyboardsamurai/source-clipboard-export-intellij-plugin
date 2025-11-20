@@ -10,6 +10,9 @@
     <!-- A displayed Vendor name or Organization ID displayed on the Plugins Page. -->
     <vendor email="agudo.projects@icloud.com" url="https://www.antonioagudo.com">Antonio Agudo</vendor>
 
+    <!-- Optional dependency: enable Kotlin PSI features when Kotlin plugin is available -->
+    <depends optional="true" config-file="kotlin.xml">org.jetbrains.kotlin</depends>
+
     <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
          Simple HTML elements (text formatting, paragraphs, and lists) can be added inside of <![CDATA[ ]]> tag.
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-description -->
@@ -30,6 +33,17 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>Version 2.1 – Workflow Polish and Accuracy ⚙️</h3>
+        <ul>
+            <li><b>Accurate Diff & History:</b> Export history now stores the <i>actual</i> files included after .gitignore, filter, size, and binary checks. The Diff view reflects real added/removed files.</li>
+            <li><b>Deterministic Ordering:</b> Files are now sorted by relative path for more readable, stable outputs and cleaner diffs.</li>
+            <li><b>Filter Controls in Settings:</b> Added an explicit "Enable file extension filters" checkbox and a clarifying note about empty lists.</li>
+            <li><b>Richer Export Notification:</b> The "Content Copied" notification includes a concise summary of processed/excluded files and active filters.</li>
+            <li><b>Better Special File Support:</b> Improved handling for files without extensions (e.g., Dockerfile/Makefile) for correct filename prefixes and Markdown language hints.</li>
+            <li><b>Consistency & Stability:</b> Unified token estimation in repository summaries; early cancellation when hitting file limits; streamed sampling for binary detection to avoid heavy reads.</li>
+            <li><b>macOS Keymap Support:</b> Added modern "macOS" keymap entries to ensure shortcuts work across IDEs.</li>
+        </ul>
+
         <h3>Version 2.0 – The Context-Aware Update for AI Workflows 🎯</h3>
         <p>A complete redesign focused on providing deep, contextual code exports with ease. Build better AI prompts, faster.</p>
 
@@ -99,50 +113,54 @@
     </extensions>
 
     <actions>
-        <!-- Main Export Group - Streamlined single menu -->
-        <group id="SourceClipboardExport.MainGroup"
-               text="Export Source"
-               description="Export source code to clipboard"
-               popup="true">
+        <!-- Primary export action (context menu only) -->
+        <action id="SourceClipboardExport.DumpFolderContents"
+                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.DumpFolderContentsAction"
+                text="Export Selected Files"
+                description="Export source code and file paths to clipboard">
             <add-to-group group-id="ProjectViewPopupMenu" />
-            
-            <!-- Primary export action -->
-            <action id="SourceClipboardExport.DumpFolderContents"
-                    class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.DumpFolderContentsAction"
-                    text="Export Selected Files"
-                    description="Export source code and file paths to clipboard">
-                <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift C"/>
-                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift C"/>
-                <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta shift C"/>
-            </action>
-            
-            <separator/>
-            
-            <!-- Smart Export Group - now inline for better UX -->
-            <group id="SourceClipboardExport.SmartExportGroup"
-                   class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.SmartExportGroup"
-                   text="Export with Context"
-                   description="Smart export with related files">
-            </group>
-            
-            <separator/>
-            
-            <!-- Export Diff Action -->
-            <action id="SourceClipboardExport.ExportDiff"
-                    class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportDiffAction"
-                    text="Compare with Last Export"
-                    description="Show differences from last export"/>
-            
-            <!-- Toggle Filters - moved to bottom, less prominent -->
-            <action id="SourceClipboardExport.ToggleFilters"
-                    class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ToggleFiltersAction"
-                    text="Toggle File Filters"
-                    description="Toggle file extension filters on/off">
-                <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift alt C"/>
-                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift alt C"/>
-                <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta shift alt C"/>
-            </action>
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift C"/>
+            <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift C"/>
+            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta shift C"/>
+            <keyboard-shortcut keymap="macOS" first-keystroke="meta shift C"/>
+        </action>
+
+        <!-- Smart Export Group submenu in Project View context menu -->
+        <group id="SourceClipboardExport.SmartExportGroup"
+               class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.SmartExportGroup"
+               text="Export with Context"
+               description="Smart export with related files">
+            <add-to-group group-id="ProjectViewPopupMenu" />
         </group>
+
+        <!-- Export Diff Action in Project View context menu -->
+        <action id="SourceClipboardExport.ExportDiff"
+                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportDiffAction"
+                text="Compare with Last Export"
+                description="Show differences from last export">
+            <add-to-group group-id="ProjectViewPopupMenu" />
+        </action>
+
+        <!-- Toggle Filters action in Project View context menu -->
+        <action id="SourceClipboardExport.ToggleFilters"
+                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ToggleFiltersAction"
+                text="Toggle File Filters"
+                description="Toggle file extension filters on/off">
+            <add-to-group group-id="ProjectViewPopupMenu" />
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift alt C"/>
+            <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift alt C"/>
+            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta shift alt C"/>
+            <keyboard-shortcut keymap="macOS" first-keystroke="meta shift alt C"/>
+        </action>
+
+        <!-- Editor-scoped Implementations action -->
+        <action id="SourceClipboardExport.ExportImplementationsAtCaret"
+                class="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.ExportImplementationsAtCaretAction"
+                text="Implementations/Subclasses (at caret)"
+                description="Export implementations/subclasses for the type at caret">
+            <add-to-group group-id="EditorPopupMenu" anchor="last" />
+            <add-to-group group-id="CodeMenu" anchor="last" />
+        </action>
 
         <!-- New Action for Folding Stack Traces -->
         <action id="SourceClipboardExport.FoldAndCopyStackTrace"

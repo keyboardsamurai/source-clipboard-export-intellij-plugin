@@ -10,6 +10,10 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.ActionRunners
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.RelatedFileFinder
 
+/**
+ * Adds build/test/runtime configuration files that are likely relevant to the selected sources.
+ * Useful when handing code to a teammate or LLM where the build context matters.
+ */
 class ExportWithConfigsAction : AnAction() {
     
     init {
@@ -19,6 +23,10 @@ class ExportWithConfigsAction : AnAction() {
     
     private val logger = Logger.getInstance(ExportWithConfigsAction::class.java)
     
+    /**
+     * For each selected file resolves nearby config files using [RelatedFileFinder.findConfigFiles]
+     * and eventually exports the combined list.
+     */
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) ?: return
@@ -41,12 +49,15 @@ class ExportWithConfigsAction : AnAction() {
         }
     }
     
+    /**
+     * Requires both a project and at least one selected file so we do not offer the action in
+     * irrelevant contexts (Project view empty area, welcome screen, etc.).
+     */
     override fun update(e: AnActionEvent) {
-        val project = e.project
-        val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)
-        e.presentation.isEnabledAndVisible = project != null && !selectedFiles.isNullOrEmpty()
+        e.presentation.isEnabledAndVisible = ActionUpdateSupport.hasProjectAndFiles(e)
     }
     
+    /** Background thread ensures `update` can safely inspect selected files. */
     override fun getActionUpdateThread(): ActionUpdateThread {
         return ActionUpdateThread.BGT
     }

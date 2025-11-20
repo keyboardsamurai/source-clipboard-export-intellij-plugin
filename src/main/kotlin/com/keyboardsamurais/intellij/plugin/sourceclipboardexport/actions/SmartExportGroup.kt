@@ -4,13 +4,20 @@ import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.Separator
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.groups.CodeStructureExportGroup
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.groups.DependencyExportGroup
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.groups.RelatedResourcesExportGroup
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions.groups.VersionHistoryExportGroup
 
+/**
+ * Root popup group registered in `plugin.xml` that collects all high-level "Smart Export"
+ * entrypoints (dependencies, structure, resources, history). When IDEA renders the action group,
+ * it lazily instantiates each child group so submenus stay responsive.
+ *
+ * Grouping everything under a single `ActionGroup` keeps `plugin.xml` tidy and lets us reuse the
+ * same enablement check for every child action.
+ */
 class SmartExportGroup : ActionGroup("Export with Context", "Smart export with related files", null) {
     
     private val dependencyExportGroup = DependencyExportGroup()
@@ -35,11 +42,10 @@ class SmartExportGroup : ActionGroup("Export with Context", "Smart export with r
     }
     
     override fun update(e: AnActionEvent) {
-        val project = e.project
-        val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)
-        e.presentation.isEnabledAndVisible = project != null && !selectedFiles.isNullOrEmpty()
+        e.presentation.isEnabledAndVisible = ActionUpdateSupport.hasProjectAndFiles(e)
     }
     
+    /** BGT ensures IDEA can evaluate selection state without blocking the EDT. */
     override fun getActionUpdateThread(): ActionUpdateThread {
         return ActionUpdateThread.BGT
     }

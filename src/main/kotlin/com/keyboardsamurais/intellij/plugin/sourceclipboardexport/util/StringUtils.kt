@@ -3,6 +3,10 @@ package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util
 import com.knuddels.jtokkit.Encodings
 import com.knuddels.jtokkit.api.EncodingType
 
+/**
+ * Small collection of string helpers shared between exporter UI and core logic. Primarily houses
+ * token estimators and validation helpers so we do not sprinkle regexes throughout the codebase.
+ */
 object StringUtils {
 
     // Cache the encoding registry and encoding to avoid recreating them for each call
@@ -19,6 +23,7 @@ object StringUtils {
         return encoding.countTokens(text)
     }
 
+    /** Returns `true` when the filter looks like `.ext` or `ext` (alphanumeric). */
     fun isValidFilterFormat(filter: String): Boolean {
         return filter.matches(Regex("^\\.?\\w+$"))
     }

@@ -2,13 +2,16 @@ package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util
 
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.application.runReadAction
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiClass
+import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.searches.ClassInheritorsSearch
+import com.intellij.psi.util.PsiTreeUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -17,6 +20,11 @@ import kotlinx.coroutines.withContext
  * Supports Java, Kotlin, and TypeScript/JavaScript class hierarchies
  */
 object InheritanceFinder {
+    private val logger = Logger.getInstance(InheritanceFinder::class.java)
+    private fun trace(msg: String) {
+        try { logger.info(msg) } catch (_: Throwable) {}
+        DebugTracer.log(msg)
+    }
     
     /**
      * Find all implementations of interfaces and subclasses of classes in the given files
@@ -43,15 +51,22 @@ object InheritanceFinder {
                 
                 val psiFile = psiManager.findFile(file) ?: continue
                 val language = detectLanguage(file)
+                trace("SCE[Finder]: scanning file=${file.path} language=$language")
                 
                 when (language) {
                     Language.JAVA, Language.KOTLIN -> {
                         // Use IntelliJ's built-in PSI analysis for Java/Kotlin
+                        val before = implementations.size
                         findJavaKotlinImplementations(psiFile, implementations, projectScope, includeAnonymous, includeTest)
+                        val added = implementations.size - before
+                        trace("SCE[Finder]: Java/Kotlin pass added=$added total=${implementations.size}")
                     }
                     Language.TYPESCRIPT, Language.JAVASCRIPT, Language.JSX, Language.TSX -> {
                         // Use text-based analysis for TypeScript/JavaScript
+                        val before = implementations.size
                         findTypeScriptImplementations(project, psiFile, implementations, includeTest)
+                        val added = implementations.size - before
+                        trace("SCE[Finder]: TS/JS pass added=$added total=${implementations.size}")
                     }
                     else -> {
                         // Skip files that don't support class hierarchies (HTML, CSS, etc.)
@@ -61,6 +76,51 @@ object InheritanceFinder {
             }
         }
         
+        trace("SCE[Finder]: final implementations total=${implementations.size}")
+        implementations
+    }
+
+    /**
+     * Find implementations for a specific set of base classes/interfaces (symbol-scoped search).
+     */
+    suspend fun findImplementationsFor(
+        bases: Collection<PsiClass>,
+        project: Project,
+        includeAnonymous: Boolean = true,
+        includeTest: Boolean = true
+    ): Set<VirtualFile> = withContext(Dispatchers.Default) {
+        val implementations = mutableSetOf<VirtualFile>()
+        val projectScope = GlobalSearchScope.projectScope(project)
+
+        ReadAction.compute<Unit, Exception> {
+            bases.forEach { base ->
+                val inheritors = ClassInheritorsSearch.search(base, projectScope, true)
+                var countPsi = 0
+
+                inheritors.forEach inheritorLoop@ { inheritor ->
+                    val inheritorFile = inheritor.containingFile?.virtualFile
+                    if (inheritorFile != null && inheritorFile.isValid) {
+                        if (!includeAnonymous && inheritor.name == null) return@inheritorLoop
+                        if (!includeTest && isTestFile(inheritorFile)) return@inheritorLoop
+                        implementations.add(inheritorFile)
+                        countPsi++
+                    }
+                }
+                trace("SCE[Finder]: base=${base.qualifiedName ?: base.name} PSI-inheritors=$countPsi")
+
+                // Kotlin-aware fallback using stub index
+                val ktFiles = findKotlinInheritorsByIndex(base, project, projectScope)
+                trace("SCE[Finder]: base=${base.qualifiedName ?: base.name} Kotlin-index hits=${ktFiles.size}")
+                ktFiles.forEach ktLoop@ { vf ->
+                    if (vf.isValid) {
+                        if (!includeTest && isTestFile(vf)) return@ktLoop
+                        implementations.add(vf)
+                    }
+                }
+            }
+        }
+
+        trace("SCE[Finder]: symbol-scoped final implementations total=${implementations.size}")
         implementations
     }
     
@@ -72,28 +132,43 @@ object InheritanceFinder {
         includeTest: Boolean
     ) {
         // Find all classes/interfaces in this file
-        val classes = findClasses(psiFile)
+        val classes = findClassesIncludingKotlin(psiFile)
+        trace("SCE[Finder]: classes in file=${psiFile.virtualFile?.path} count=${classes.size} names=${classes.map { it.qualifiedName ?: it.name }}")
         
         for (psiClass in classes) {
             // Search for inheritors
             val inheritors = ClassInheritorsSearch.search(psiClass, projectScope, true)
+            var countPsi = 0
             
-            inheritors.forEach { inheritor ->
+            inheritors.forEach javaInheritorLoop@ { inheritor ->
                 val inheritorFile = inheritor.containingFile?.virtualFile
                 
                 if (inheritorFile != null && inheritorFile.isValid && inheritorFile != psiFile.virtualFile) {
                     // Check filters
                     if (!includeAnonymous && inheritor.name == null) {
-                        return@forEach
+                        return@javaInheritorLoop
                     }
                     
                     if (!includeTest && isTestFile(inheritorFile)) {
-                        return@forEach
+                        return@javaInheritorLoop
                     }
                     
                     implementations.add(inheritorFile)
+                    countPsi++
                 }
             }
+            trace("SCE[Finder]: base=${psiClass.qualifiedName ?: psiClass.name} PSI-inheritors=$countPsi")
+
+            // Kotlin-aware fallback: use Kotlin stub index to find subclasses by super name
+            val beforeFallback = implementations.size
+            implementations.addAll(
+                findKotlinInheritorsByIndex(psiClass, psiFile.project, projectScope)
+                    .filter { vf -> vf.isValid && vf != psiFile.virtualFile }
+                    .filter { vf -> includeTest || !isTestFile(vf) }
+                    .toSet()
+            )
+            val addedFallback = implementations.size - beforeFallback
+            trace("SCE[Finder]: base=${psiClass.qualifiedName ?: psiClass.name} Kotlin-index added=$addedFallback totalNow=${implementations.size}")
         }
     }
     
@@ -109,7 +184,6 @@ object InheritanceFinder {
         if (inheritableElements.isEmpty()) return
         
         // Search for implementations across TypeScript/JavaScript files
-        val projectScope = GlobalSearchScope.projectScope(project)
         
         runReadAction {
             val projectFileIndex = com.intellij.openapi.roots.ProjectFileIndex.getInstance(project)
@@ -139,13 +213,73 @@ object InheritanceFinder {
             }
         }
     }
+
+    /**
+     * Fallback search for Kotlin inheritors using KotlinSuperClassNameIndex.
+     * Uses reflection so the plugin works without the Kotlin plugin.
+     */
+    private fun findKotlinInheritorsByIndex(base: PsiClass, project: Project, scope: GlobalSearchScope): List<VirtualFile> {
+        val baseName = base.name ?: return emptyList()
+        return try {
+            val indexClass = Class.forName("org.jetbrains.kotlin.idea.stubindex.KotlinSuperClassNameIndex")
+            val getInstance = indexClass.methods.firstOrNull { it.name == "getInstance" && it.parameterCount == 0 }
+            val instance = getInstance?.invoke(null) ?: return emptyList()
+            val getMethod = instance.javaClass.methods.firstOrNull {
+                it.name == "get" && it.parameterCount == 3 &&
+                        it.parameterTypes[0] == String::class.java &&
+                        Project::class.java.isAssignableFrom(it.parameterTypes[1])
+            } ?: return emptyList()
+
+            val result = getMethod.invoke(instance, baseName, project, scope)
+            val ktList: Collection<*> = when (result) {
+                is Collection<*> -> result
+                is Array<*> -> result.filterNotNull()
+                else -> return emptyList()
+            }
+
+            val files = mutableListOf<VirtualFile>()
+            for (kt in ktList) {
+                // Convert to light classes and verify inheritance relationship to avoid name collisions
+                val lightClasses = toLightClassesReflect(kt)
+                for (lc in lightClasses) {
+                    try {
+                        if (lc.isInheritor(base, true)) {
+                            lc.containingFile?.virtualFile?.let { files.add(it) }
+                        }
+                    } catch (_: Throwable) {
+                        // Ignore any resolution failures
+                    }
+                }
+            }
+            files
+        } catch (_: Throwable) {
+            emptyList()
+        }
+    }
+
+    private fun toLightClassesReflect(ktClassOrObject: Any?): List<PsiClass> {
+        if (ktClassOrObject == null) return emptyList()
+        return try {
+            val utils = Class.forName("org.jetbrains.kotlin.asJava.LightClassUtilsKt")
+            val method = utils.methods.firstOrNull { it.name == "toLightClasses" && it.parameterTypes.size == 1 }
+            val res = method?.invoke(null, ktClassOrObject)
+            when (res) {
+                is List<*> -> res.filterIsInstance<PsiClass>()
+                is Array<*> -> res.filterIsInstance<PsiClass>()
+                else -> emptyList()
+            }
+        } catch (_: Throwable) {
+            emptyList()
+        }
+    }
     
     /**
      * Find all classes and interfaces in a file
      */
-    private fun findClasses(psiFile: PsiFile): List<PsiClass> {
+    private fun findClassesIncludingKotlin(psiFile: PsiFile): List<PsiClass> {
         val classes = mutableListOf<PsiClass>()
-        
+
+        // Collect Java PsiClass declarations
         psiFile.accept(object : com.intellij.psi.PsiRecursiveElementVisitor() {
             override fun visitElement(element: com.intellij.psi.PsiElement) {
                 if (element is PsiClass) {
@@ -154,8 +288,44 @@ object InheritanceFinder {
                 super.visitElement(element)
             }
         })
-        
-        return classes
+
+        // Attempt to collect Kotlin class/interface declarations via light classes
+        try {
+            val ktFileClass = Class.forName("org.jetbrains.kotlin.psi.KtFile")
+            if (ktFileClass.isInstance(psiFile)) {
+                val ktClassOrObjectClass = Class.forName("org.jetbrains.kotlin.psi.KtClassOrObject")
+
+                // Collect all KtClassOrObject elements
+                @Suppress("UNCHECKED_CAST")
+                val ktElements: Collection<PsiElement> = PsiTreeUtil.collectElementsOfType(psiFile, ktClassOrObjectClass as Class<PsiElement>)
+                trace("SCE[Finder]: Kotlin KtClassOrObject count=${ktElements.size}")
+
+                // Use Kotlin's LightClassUtilsKt.toLightClasses via reflection to avoid hard dependency at class load time
+                val lightUtils = Class.forName("org.jetbrains.kotlin.asJava.LightClassUtilsKt")
+                val toLightClasses = lightUtils.methods.firstOrNull { m ->
+                    m.name == "toLightClasses" && m.parameterTypes.size == 1 && m.parameterTypes[0].name == "org.jetbrains.kotlin.psi.KtClassOrObject"
+                }
+
+                if (toLightClasses != null) {
+                    for (kt in ktElements) {
+                        val result = toLightClasses.invoke(null, kt)
+                        if (result is List<*>) {
+                            result.forEach { lc ->
+                                if (lc is PsiClass) classes.add(lc)
+                            }
+                        } else if (result is Array<*>) {
+                            result.forEach { lc -> if (lc is PsiClass) classes.add(lc) }
+                        }
+                    }
+                }
+            }
+        } catch (_: Throwable) {
+            // Kotlin plugin not available or reflection failed; skip Kotlin classes gracefully
+        }
+
+        // Deduplicate by qualified name and fallback to name if null
+        trace("SCE[Finder]: total classes collected=${classes.size}")
+        return classes.distinctBy { it.qualifiedName ?: it.name ?: it.toString() }
     }
     
     /**
@@ -267,12 +437,24 @@ object InheritanceFinder {
                 
                 when (language) {
                     Language.JAVA, Language.KOTLIN -> {
-                        val classes = findClasses(psiFile)
+                        // Include Kotlin via light classes
+                        val classes = findClassesIncludingKotlin(psiFile)
+                        trace("SCE[Stats]: file=${file.path} classes=${classes.map { it.qualifiedName ?: it.name }}")
                         for (psiClass in classes) {
-                            when {
-                                psiClass.isInterface -> stats.interfaceCount++
-                                psiClass.hasModifierProperty("abstract") -> stats.abstractClassCount++
-                                else -> stats.concreteClassCount++
+                            try {
+                                if (psiClass.isInterface) {
+                                    stats.interfaceCount++
+                                } else if (psiClass.hasModifierProperty("abstract")) {
+                                    stats.abstractOrOpenClassCount++
+                                } else if (isKotlinOpen(psiClass)) {
+                                    // Kotlin 'open' classes count as inheritable
+                                    stats.abstractOrOpenClassCount++
+                                } else {
+                                    stats.concreteClassCount++
+                                }
+                            } catch (_: Throwable) {
+                                // Defensive: if anything goes wrong, classify as concrete
+                                stats.concreteClassCount++
                             }
                         }
                     }
@@ -282,7 +464,7 @@ object InheritanceFinder {
                         for (element in elements) {
                             when (element.type) {
                                 ElementType.INTERFACE -> stats.interfaceCount++
-                                ElementType.ABSTRACT_CLASS -> stats.abstractClassCount++
+                                ElementType.ABSTRACT_CLASS -> stats.abstractOrOpenClassCount++
                                 ElementType.CLASS -> stats.concreteClassCount++
                                 ElementType.REACT_COMPONENT -> stats.componentCount++
                             }
@@ -296,7 +478,42 @@ object InheritanceFinder {
             }
         }
         
+        trace("SCE[Stats]: total interfaces=${stats.interfaceCount} abstract/open=${stats.abstractOrOpenClassCount} concrete=${stats.concreteClassCount} components=${stats.componentCount}")
         stats
+    }
+
+    /**
+     * Collect all classes/interfaces declared in the given file (Java and Kotlin via light classes).
+     */
+    fun collectClasses(psiFile: PsiFile): List<PsiClass> {
+        return ReadAction.compute<List<PsiClass>, Exception> {
+            findClassesIncludingKotlin(psiFile)
+        }
+    }
+
+    /**
+     * Best-effort check whether a PsiClass originates from a Kotlin 'open' class.
+     * Uses reflection to avoid hard dependency when Kotlin plugin is absent.
+     */
+    private fun isKotlinOpen(psiClass: PsiClass): Boolean {
+        return try {
+            val originalElement: PsiElement? = psiClass.navigationElement
+            if (originalElement == null) return false
+
+            val ktClassOrObjectClass = Class.forName("org.jetbrains.kotlin.psi.KtClassOrObject")
+            if (!ktClassOrObjectClass.isInstance(originalElement)) return false
+
+            val ktModifierListOwnerClass = Class.forName("org.jetbrains.kotlin.psi.KtModifierListOwner")
+            if (!ktModifierListOwnerClass.isInstance(originalElement)) return false
+
+            val ktTokensClass = Class.forName("org.jetbrains.kotlin.lexer.KtTokens")
+            val OPEN = ktTokensClass.getField("OPEN_KEYWORD").get(null)
+
+            val hasModifierMethod = ktModifierListOwnerClass.methods.firstOrNull { it.name == "hasModifier" && it.parameterTypes.size == 1 }
+            hasModifierMethod?.invoke(originalElement, OPEN) as? Boolean ?: false
+        } catch (_: Throwable) {
+            false
+        }
     }
     
     private enum class Language {
@@ -314,19 +531,19 @@ object InheritanceFinder {
     
     data class ImplementationStats(
         var interfaceCount: Int = 0,
-        var abstractClassCount: Int = 0,
+        var abstractOrOpenClassCount: Int = 0,
         var concreteClassCount: Int = 0,
         var componentCount: Int = 0  // For React components
     ) {
         val totalCount: Int
-            get() = interfaceCount + abstractClassCount + concreteClassCount + componentCount
+            get() = interfaceCount + abstractOrOpenClassCount + concreteClassCount + componentCount
             
-        fun hasInheritableTypes(): Boolean = interfaceCount > 0 || abstractClassCount > 0 || componentCount > 0
+        fun hasInheritableTypes(): Boolean = interfaceCount > 0 || abstractOrOpenClassCount > 0 || componentCount > 0
         
         fun getDescription(): String {
             val parts = mutableListOf<String>()
             if (interfaceCount > 0) parts.add("$interfaceCount interface${if (interfaceCount > 1) "s" else ""}")
-            if (abstractClassCount > 0) parts.add("$abstractClassCount abstract class${if (abstractClassCount > 1) "es" else ""}")
+            if (abstractOrOpenClassCount > 0) parts.add("$abstractOrOpenClassCount abstract/open class${if (abstractOrOpenClassCount > 1) "es" else ""}")
             if (componentCount > 0) parts.add("$componentCount React component${if (componentCount > 1) "s" else ""}")
             
             return when (parts.size) {

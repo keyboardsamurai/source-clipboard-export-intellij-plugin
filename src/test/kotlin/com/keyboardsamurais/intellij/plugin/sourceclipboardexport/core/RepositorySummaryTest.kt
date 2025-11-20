@@ -3,11 +3,13 @@ package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.AppConstants
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.StringUtils
 import git4idea.repo.GitRemote
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkObject
 import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 import org.junit.jupiter.api.AfterEach
@@ -260,5 +262,83 @@ class RepositorySummaryTest {
         assertContains(result, "<repository-url>")
         assertContains(result, expectedUrl)
         assertContains(result, "</repository-url>")
+    }
+
+    @Test
+    fun `generateSummary includes file stats and token counts`() {
+        mockkObject(StringUtils)
+        every { StringUtils.estimateTokensWithSubwordHeuristic(any()) } answers { (firstArg<String>().length / 2) }
+
+        val expectedUrl = "https://github.com/example/repo"
+        every { mockRepositoryManager.repositories } returns listOf(mockRepository)
+        every { mockRepository.remotes } returns listOf(mockRemote)
+        every { mockRepository.root } returns mockVirtualFile
+        every { mockRemote.name } returns "origin"
+        every { mockRemote.firstUrl } returns expectedUrl
+
+        val fooBody = "class Foo {}\n"
+        val barBody = "fun bar() {}\nmore lines\n"
+        val fileContents = listOf(
+                "${AppConstants.FILENAME_PREFIX}src/Foo.kt\n$fooBody",
+                "${AppConstants.FILENAME_PREFIX}src/Bar.kt\n$barBody"
+        )
+        val fooChars = fooBody.length
+        val barChars = barBody.length
+        val totalChars = fooChars + barChars
+        val fooTokens = fooBody.length / 2
+        val barTokens = barBody.length / 2
+        val fooPercent = String.format("%.1f", fooChars / totalChars.toDouble() * 100)
+        val barPercent = String.format("%.1f", barChars / totalChars.toDouble() * 100)
+
+        val summary = RepositorySummary(
+                project = mockProject,
+                selectedFiles = arrayOf(mockVirtualFile),
+                fileContents = fileContents,
+                processedFileCount = 2,
+                excludedByFilterCount = 0,
+                excludedBySizeCount = 0,
+                excludedByBinaryContentCount = 0,
+                excludedByIgnoredNameCount = 0,
+                excludedByGitignoreCount = 0
+        ).generateSummary(AppConstants.OutputFormat.PLAIN_TEXT)
+
+        assertContains(summary, "Top 10 Files")
+        assertContains(summary, "src/Foo.kt")
+        assertContains(summary, "$fooChars chars | $fooTokens tokens | $fooPercent%")
+        assertContains(summary, "src/Bar.kt")
+        assertContains(summary, "$barChars chars | $barTokens tokens | $barPercent%")
+        assertContains(summary, expectedUrl)
+    }
+
+    @Test
+    fun `xml summary escapes special characters`() {
+        mockkObject(StringUtils)
+        every { StringUtils.estimateTokensWithSubwordHeuristic(any()) } returns 10
+
+        val expectedUrl = "https://example.com/repo?branch=main&token=1"
+        every { mockRepositoryManager.repositories } returns listOf(mockRepository)
+        every { mockRepository.remotes } returns listOf(mockRemote)
+        every { mockRepository.root } returns mockVirtualFile
+        every { mockRemote.name } returns "origin"
+        every { mockRemote.firstUrl } returns expectedUrl
+
+        val fileContents = listOf(
+                "${AppConstants.FILENAME_PREFIX}src/<Foo>.kt\nfun main() = \"<>\""
+        )
+
+        val summary = RepositorySummary(
+                project = mockProject,
+                selectedFiles = arrayOf(mockVirtualFile),
+                fileContents = fileContents,
+                processedFileCount = 1,
+                excludedByFilterCount = 0,
+                excludedBySizeCount = 0,
+                excludedByBinaryContentCount = 0,
+                excludedByIgnoredNameCount = 0,
+                excludedByGitignoreCount = 0
+        ).generateSummary(AppConstants.OutputFormat.XML)
+
+        assertContains(summary, "&lt;Foo&gt;.kt")
+        assertContains(summary, "https://example.com/repo?branch=main&amp;token=1")
     }
 }

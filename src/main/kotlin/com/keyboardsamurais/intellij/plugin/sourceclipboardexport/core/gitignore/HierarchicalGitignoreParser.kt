@@ -2,6 +2,7 @@ package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.core.gitignor
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VfsUtil
@@ -16,14 +17,16 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.FileUtils
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Implements hierarchical .gitignore parsing by finding and applying rules from
- * all .gitignore files in the path hierarchy from a file up to the project root.
- * 
- * Git's ignore rules are hierarchical – rules in subdirectories can override or add to parent rules.
- * This class caches GitignoreParser instances for efficiency and applies rules with proper precedence.
- * 
+ * Implements hierarchical .gitignore parsing by finding and applying rules from all .gitignore
+ * files in the path hierarchy from a file up to the project root.
+ *
+ * Git's ignore rules are hierarchical – rules in subdirectories can override or add to parent
+ * rules. This class caches GitignoreParser instances for efficiency and applies rules with proper
+ * precedence.
+ *
  * It also listens for VFS events to invalidate the cache when .gitignore files are modified.
  */
+@Service(Service.Level.PROJECT)
 class HierarchicalGitignoreParser(private val project: Project) : Disposable {
     private val logger = Logger.getInstance(HierarchicalGitignoreParser::class.java)
 
@@ -34,38 +37,40 @@ class HierarchicalGitignoreParser(private val project: Project) : Disposable {
     private val repositoryRoot: VirtualFile? = FileUtils.getRepositoryRoot(project)
 
     // Modern VFS listener using BulkFileListener for message bus
-    private val vfsListener = object : BulkFileListener {
-        override fun after(events: List<VFileEvent>) {
-            events.forEach { event ->
-                val file = event.file
-                if (file?.name == ".gitignore") {
-                    when (event) {
-                        is VFileContentChangeEvent -> {
-                            logger.debug("Gitignore file changed: ${file.path}. Invalidating cache entry.")
-                            parserCache.remove(file.path)
-                        }
-                        is VFileDeleteEvent -> {
-                            logger.debug("Gitignore file deleted: ${file.path}. Invalidating cache entry.")
-                            parserCache.remove(file.path)
-                        }
-                        is VFileMoveEvent -> {
-                            val oldPath = event.oldPath
-                            logger.debug("Gitignore file moved: ${file.path} (from $oldPath). Invalidating cache entries.")
-                            parserCache.remove(file.path)
-                            parserCache.remove(oldPath)
+    private val vfsListener =
+            object : BulkFileListener {
+                override fun after(events: List<VFileEvent>) {
+                    events.forEach { event ->
+                        val file = event.file
+                        if (file?.name == ".gitignore") {
+                            when (event) {
+                                is VFileContentChangeEvent -> {
+                                    logger.debug("Gitignore file changed: ${file.path}. Invalidating cache entry.")
+                                    parserCache.remove(file.path)
+                                }
+                                is VFileDeleteEvent -> {
+                                    logger.debug("Gitignore file deleted: ${file.path}. Invalidating cache entry.")
+                                    parserCache.remove(file.path)
+                                }
+                                is VFileMoveEvent -> {
+                                    val oldPath = event.oldPath
+                                    logger.debug("Gitignore file moved: ${file.path} (from $oldPath). Invalidating cache entries.")
+                                    parserCache.remove(file.path)
+                                    parserCache.remove(oldPath)
+                                }
+                            }
                         }
                     }
                 }
             }
-        }
-    }
 
     init {
         try {
             // Modern way: Use message bus with disposable connection
-            ApplicationManager.getApplication().messageBus
-                .connect(this)
-                .subscribe(VirtualFileManager.VFS_CHANGES, vfsListener)
+            ApplicationManager.getApplication()
+                    .messageBus
+                    .connect(this)
+                    .subscribe(VirtualFileManager.VFS_CHANGES, vfsListener)
             logger.debug("HierarchicalGitignoreParser initialized with VFS listener via message bus")
         } catch (e: Exception) {
             // In test environments, the message bus might not be available
@@ -74,7 +79,8 @@ class HierarchicalGitignoreParser(private val project: Project) : Disposable {
     }
 
     /**
-     * Disposes this instance. The VFS listener is automatically removed via the disposable connection.
+     * Disposes this instance. The VFS listener is automatically removed via the disposable
+     * connection.
      */
     override fun dispose() {
         // No need to manually remove listener - disposable connection handles it automatically
@@ -82,8 +88,8 @@ class HierarchicalGitignoreParser(private val project: Project) : Disposable {
     }
 
     /**
-     * Checks if a file should be ignored based on all applicable .gitignore rules
-     * in the path hierarchy from the file up to the project root.
+     * Checks if a file should be ignored based on all applicable .gitignore rules in the path
+     * hierarchy from the file up to the project root.
      *
      * @param file The file to check
      * @return true if the file should be ignored, false otherwise
@@ -123,13 +129,14 @@ class HierarchicalGitignoreParser(private val project: Project) : Disposable {
             val gitignoreDir = parser.gitignoreFile.parent
 
             // Special handling for root gitignore
-            val relativeToGitignore = if (gitignoreDir == repositoryRoot) {
-                // For root gitignore, use the path relative to the repository root
-                relativePath
-            } else {
-                // For other gitignores, use the path relative to the gitignore directory
-                VfsUtil.getRelativePath(file, gitignoreDir, '/')
-            }
+            val relativeToGitignore =
+                    if (gitignoreDir == repositoryRoot) {
+                        // For root gitignore, use the path relative to the repository root
+                        relativePath
+                    } else {
+                        // For other gitignores, use the path relative to the gitignore directory
+                        VfsUtil.getRelativePath(file, gitignoreDir, '/')
+                    }
 
             logger.debug("Checking against gitignore: ${parser.gitignoreFile.path}")
             logger.debug("  gitignoreDir: ${gitignoreDir.path}")
@@ -161,16 +168,18 @@ class HierarchicalGitignoreParser(private val project: Project) : Disposable {
             }
         }
 
-        // Final decision: if null (no rules matched or all were NO_MATCH), default to false (not ignored)
+        // Final decision: if null (no rules matched or all were NO_MATCH), default to false (not
+        // ignored)
         val finalDecision = decision ?: false
         logger.debug("Final decision for ${file.path}: $finalDecision (initial decision was $decision)")
         return finalDecision
     }
 
     /**
-     * Finds all applicable .gitignore files in the path hierarchy from the file up to the project root.
-     * Returns a list of GitignoreParser instances ordered from root to leaf (for proper precedence).
-     * This ensures that child rules can override parent rules, following Git's precedence rules.
+     * Finds all applicable .gitignore files in the path hierarchy from the file up to the project
+     * root. Returns a list of GitignoreParser instances ordered from root to leaf (for proper
+     * precedence). This ensures that child rules can override parent rules, following Git's
+     * precedence rules.
      *
      * @param file The file to find applicable .gitignore files for
      * @return List of GitignoreParser instances ordered from root to leaf
@@ -196,7 +205,8 @@ class HierarchicalGitignoreParser(private val project: Project) : Disposable {
         // First collect all directories from leaf to root
         val leafToRootDirs = mutableListOf<VirtualFile>()
 
-        // Add the current directory and all parent directories up to (and including) the repository root
+        // Add the current directory and all parent directories up to (and including) the repository
+        // root
         while (currentDir != null) {
             leafToRootDirs.add(currentDir)
             logger.debug("Added directory to check (leaf-to-root): ${currentDir.path}")
@@ -252,9 +262,8 @@ class HierarchicalGitignoreParser(private val project: Project) : Disposable {
         }
     }
 
-    /**
-     * Clears the parser cache.
-     */
+    /** Clears the parser cache. */
+    /** Clears all cached [GitignoreParser] instances. Called before each export to avoid staleness. */
     fun clearCache() {
         parserCache.clear()
         logger.debug("Cleared GitignoreParser cache")

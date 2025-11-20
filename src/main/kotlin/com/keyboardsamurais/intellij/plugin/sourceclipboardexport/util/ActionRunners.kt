@@ -8,7 +8,28 @@ import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
 
+/**
+ * Centralizes background-task boilerplate so actions consistently wait for smart mode and degrade
+ * gracefully inside tests/headless runs.
+ */
 object ActionRunners {
+    /**
+     * Runs [task] as a [Task.Backgroundable], waiting for smart mode unless the IDE is unavailable
+     * (unit tests).
+     *
+     * Example:
+     * ```
+     * ActionRunners.runSmartBackground(project, "Computing deps") { indicator ->
+     *     indicator.text = "Scanning project…"
+     *     doWork()
+     * }
+     * ```
+     *
+     * @param project IntelliJ project
+     * @param title progress title
+     * @param cancellable whether the task should display a cancel button
+     * @param task work to execute with a [ProgressIndicator]
+     */
     fun runSmartBackground(
         project: Project,
         title: String,

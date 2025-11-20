@@ -2,10 +2,17 @@ package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.actions
 
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.ActionRunners
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.NotificationUtils
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.ResourceFinder
+import io.mockk.coEvery
 import io.mockk.every
+import io.mockk.justRun
 import io.mockk.mockk
+import io.mockk.mockkObject
 import io.mockk.verify
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -16,6 +23,7 @@ class ExportWithResourcesActionTest {
     private lateinit var event: AnActionEvent
     private lateinit var project: Project
     private lateinit var sourceFile: VirtualFile
+    private lateinit var resourceFile: VirtualFile
     private lateinit var directoryFile: VirtualFile
     private lateinit var nonSourceFile: VirtualFile
     
@@ -25,6 +33,7 @@ class ExportWithResourcesActionTest {
         event = mockk(relaxed = true)
         project = mockk(relaxed = true)
         sourceFile = mockk(relaxed = true)
+        resourceFile = mockk(relaxed = true)
         directoryFile = mockk(relaxed = true)
         nonSourceFile = mockk(relaxed = true)
         
@@ -200,6 +209,58 @@ class ExportWithResourcesActionTest {
         val result = method.invoke(action, tsFile) as Boolean
         
         assert(result)
+    }
+
+    @Test
+    fun `actionPerformed exports files with related resources`() {
+        every { event.project } returns project
+        every { event.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) } returns arrayOf(sourceFile)
+
+        mockkObject(ActionRunners)
+        mockkObject(ResourceFinder)
+        mockkObject(SmartExportUtils)
+
+        every {
+            ActionRunners.runSmartBackground(project, any(), any(), any())
+        } answers {
+            val task = arg<(ProgressIndicator) -> Unit>(3)
+            task.invoke(mockk(relaxed = true))
+        }
+        coEvery { ResourceFinder.findRelatedResources(any(), any()) } returns setOf(resourceFile)
+        justRun { SmartExportUtils.exportFiles(any(), any()) }
+
+        action.actionPerformed(event)
+
+        verify {
+            SmartExportUtils.exportFiles(project, match { files ->
+                files.contains(sourceFile) && files.contains(resourceFile)
+            })
+        }
+    }
+
+    @Test
+    fun `actionPerformed notifies when no related resources found`() {
+        every { event.project } returns project
+        every { event.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) } returns arrayOf(sourceFile)
+
+        mockkObject(ActionRunners)
+        mockkObject(ResourceFinder)
+        mockkObject(SmartExportUtils)
+        mockkObject(NotificationUtils)
+
+        every {
+            ActionRunners.runSmartBackground(project, any(), any(), any())
+        } answers {
+            val task = arg<(ProgressIndicator) -> Unit>(3)
+            task.invoke(mockk(relaxed = true))
+        }
+        coEvery { ResourceFinder.findRelatedResources(any(), any()) } returns emptySet()
+        justRun { NotificationUtils.showNotification(any(), any(), any(), any()) }
+
+        action.actionPerformed(event)
+
+        verify(exactly = 0) { SmartExportUtils.exportFiles(any(), any()) }
+        verify { NotificationUtils.showNotification(project, any(), match { it.contains("No related") }, any()) }
     }
     
     @Test

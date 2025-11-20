@@ -328,3 +328,5 @@ Temporary Items
 # Documentation folder (removed from history)
 documentation/
 /.specstory/
+/.gradle-home/
+/.gradle-tmp/

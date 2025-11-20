@@ -18,6 +18,16 @@ import javax.swing.table.TableColumnModel
  */
 object TableButtonColumn {
 
+    /**
+     * Installs a button renderer/editor in the given column that executes [action] with the row
+     * index. Used by the settings table to provide inline "Remove" controls without bespoke UI
+     * wiring.
+     *
+     * @param table target [JTable]
+     * @param column zero-based column index that should host the buttons
+     * @param actionText label for each button
+     * @param action invoked with the row index when the button is clicked
+     */
     fun add(table: JTable, column: Int, actionText: String = "Remove", action: (Int) -> Unit) {
         val button = JButton(actionText)
         button.isOpaque = true

@@ -11,7 +11,9 @@ import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.ResourceF
 import kotlinx.coroutines.runBlocking
 
 /**
- * Action to export related HTML templates, CSS files, and static resources
+ * Augments the manual selection with related resources (templates, styles, JSON configs, etc.)
+ * detected by [ResourceFinder]. Useful when sharing UI features with LLMs where context such as CSS
+ * or templates materially changes the output.
  */
 class ExportWithResourcesAction : AnAction() {
     
@@ -20,6 +22,11 @@ class ExportWithResourcesAction : AnAction() {
         templatePresentation.description = "Export related HTML, CSS, and resource files"
     }
     
+    /**
+     * Resolves resource files via [ResourceFinder.findRelatedResources] and exports the union of
+     * the original selection plus any matched assets. The work happens in smart mode to ensure PSI
+     * indexes are available to the resource strategies.
+     */
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) ?: return
@@ -51,24 +58,6 @@ class ExportWithResourcesAction : AnAction() {
                     val allFiles = selectedFiles.toMutableSet()
                     allFiles.addAll(resources)
                     
-                    // Categorize resources for better notification
-                    val templates = resources.filter { 
-                        it.extension?.lowercase() in setOf("html", "htm", "jsp", "ftl", "vm", "vue", "hbs", "ejs", "pug", "jade")
-                    }
-                    val styles = resources.filter {
-                        it.extension?.lowercase() in setOf("css", "scss", "sass", "less", "styl", "stylus")
-                    }
-                    val other = resources.size - templates.size - styles.size
-                    
-                    val description = buildString {
-                        append("Resources Export (")
-                        val parts = mutableListOf<String>()
-                        if (templates.isNotEmpty()) parts.add("${templates.size} template${if (templates.size > 1) "s" else ""}")
-                        if (styles.isNotEmpty()) parts.add("${styles.size} style${if (styles.size > 1) "s" else ""}")
-                        if (other > 0) parts.add("$other other")
-                        append(parts.joinToString(", "))
-                        append(")")
-                    }
                     
                     indicator.text = "Exporting ${allFiles.size} files..."
                     
@@ -88,14 +77,15 @@ class ExportWithResourcesAction : AnAction() {
         }
     }
     
+    /**
+     * Displays the action only when at least one plausible source file (not folder/binary) is
+     * selected because resource heuristics rely on code-to-asset relationships.
+     */
     override fun update(e: AnActionEvent) {
-        val project = e.project
-        val selectedFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)
-        
-        // Enable for any source files that might have associated resources
-        e.presentation.isEnabled = project != null && 
-                                  !selectedFiles.isNullOrEmpty() &&
-                                  selectedFiles.any { !it.isDirectory && isSourceFile(it) }
+        val enabled = ActionUpdateSupport.hasProjectAndFiles(e) { files ->
+            files.any { !it.isDirectory && isSourceFile(it) }
+        }
+        e.presentation.isEnabled = enabled
     }
     
     private fun isSourceFile(file: VirtualFile): Boolean {
@@ -118,5 +108,6 @@ class ExportWithResourcesAction : AnAction() {
         )
     }
     
+    /** Must run off the EDT because `update` checks the selection array. */
     override fun getActionUpdateThread() = com.intellij.openapi.actionSystem.ActionUpdateThread.BGT
 }

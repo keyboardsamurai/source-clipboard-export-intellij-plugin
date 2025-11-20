@@ -1,0 +1,7 @@
+<idea-plugin>
+    <!-- Register Kotlin-specific service only when Kotlin plugin is present -->
+    <applicationService
+            serviceInterface="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.kotlin.KotlinImportResolver"
+            serviceImplementation="com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.kotlin.KotlinImportResolverImpl"/>
+</idea-plugin>
+

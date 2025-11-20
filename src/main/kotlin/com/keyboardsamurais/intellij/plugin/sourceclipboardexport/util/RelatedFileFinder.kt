@@ -1,20 +1,29 @@
 package com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util
 
+// Avoid a hard dependency on Kotlin PSI; use optional service instead.
+import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.application.runReadAction
+import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiJavaFile
 import com.intellij.psi.PsiManager
 import com.intellij.psi.search.FilenameIndex
 import com.intellij.psi.search.GlobalSearchScope
-import org.jetbrains.kotlin.psi.KtFile
+import com.keyboardsamurais.intellij.plugin.sourceclipboardexport.util.kotlin.KotlinImportResolver
 
+/**
+ * Heuristic heavy-lifter responsible for locating files related to a selection (tests, configs,
+ * imports, recent changes, etc.). Split out so multiple actions can share consistent behavior.
+ */
 object RelatedFileFinder {
+    private val LOG = Logger.getInstance(RelatedFileFinder::class.java)
 
     object Config {
         private fun listProp(key: String, default: List<String>) =
@@ -30,6 +39,10 @@ object RelatedFileFinder {
         val importsMaxPerFile: Int = intProp("sce.imports.maxPerFile", Int.MAX_VALUE)
     }
     
+    /**
+     * Discovers test files that match the given source file using language-aware naming
+     * conventions (JUnit, Jest, pytest, etc.) plus folder heuristics like `__tests__`.
+     */
     fun findTestFiles(project: Project, sourceFile: VirtualFile): List<VirtualFile> {
         if (sourceFile.isDirectory) return emptyList()
         
@@ -87,13 +100,13 @@ object RelatedFileFinder {
         
         // Special handling for __tests__ folders (React/Next.js convention)
         if (language in listOf(Language.JAVASCRIPT, Language.TYPESCRIPT, Language.JSX, Language.TSX)) {
-            findTestsInTestFolders(project, sourceFile, testFiles)
+            findTestsInTestFolders(sourceFile, testFiles)
         }
         
         return testFiles.distinct()
     }
     
-    private fun findTestsInTestFolders(project: Project, sourceFile: VirtualFile, testFiles: MutableList<VirtualFile>) {
+    private fun findTestsInTestFolders(sourceFile: VirtualFile, testFiles: MutableList<VirtualFile>) {
         val fileName = sourceFile.nameWithoutExtension
         val parentDir = sourceFile.parent ?: return
         
@@ -124,6 +137,10 @@ object RelatedFileFinder {
         }
     }
     
+    /**
+     * Returns configuration files that are relevant for the source file's language (package.json,
+     * tsconfig, application.yml, Dockerfile, etc.). Used by the "Include Configuration" action.
+     */
     fun findConfigFiles(project: Project, sourceFile: VirtualFile): List<VirtualFile> {
         val configFiles = mutableListOf<VirtualFile>()
         val projectRoot = ReadAction.compute<VirtualFile?, Exception> {
@@ -184,6 +201,10 @@ object RelatedFileFinder {
         return configFiles.distinct()
     }
     
+    /**
+     * Scans the project VFS for files whose last-modified timestamp is within the past [hours].
+     * Does not require VCS data, making it fast.
+     */
     fun findRecentChanges(project: Project, hours: Int = 24): List<VirtualFile> {
         val recentFiles = mutableListOf<VirtualFile>()
         val cutoffTime = System.currentTimeMillis() - (hours * 60 * 60 * 1000)
@@ -202,7 +223,11 @@ object RelatedFileFinder {
         return recentFiles
     }
     
-    fun findCurrentPackageFiles(project: Project, sourceFile: VirtualFile): List<VirtualFile> {
+    /**
+     * Returns other files that live in the same directory/package as [sourceFile]. For JS/TS
+     * components we include CSS modules or barrel files as well.
+     */
+    fun findCurrentPackageFiles(sourceFile: VirtualFile): List<VirtualFile> {
         val packageFiles = mutableListOf<VirtualFile>()
         val parent = sourceFile.parent ?: return emptyList()
         val language = detectLanguage(sourceFile)
@@ -253,6 +278,7 @@ object RelatedFileFinder {
         return packageFiles.distinct()
     }
     
+    /** Resolves direct imports/requires for a file via PSI + text heuristics. */
     fun findDirectImports(project: Project, sourceFile: VirtualFile): List<VirtualFile> {
         if (sourceFile.isDirectory) return emptyList()
         
@@ -263,6 +289,10 @@ object RelatedFileFinder {
         return findImportedFiles(project, psiFile, transitive = false)
     }
     
+    /**
+     * Computes the transitive closure of imports starting from [sourceFile], bounded by the
+     * configured max depth and max results per file.
+     */
     fun findTransitiveImports(project: Project, sourceFile: VirtualFile): List<VirtualFile> {
         if (sourceFile.isDirectory) return emptyList()
         
@@ -324,13 +354,14 @@ object RelatedFileFinder {
     
     private fun extractImportsFromFile(project: Project, psiFile: PsiFile): List<VirtualFile> {
         val imports = mutableSetOf<VirtualFile>()
-        val fileText = psiFile.text
+        // Accessing PSI text must be done under a read action
+        val fileText = ReadAction.compute<String, Exception> { psiFile.text }
         val language = detectLanguage(psiFile.virtualFile)
 
-        // Prefer PSI-level import resolution for Java/Kotlin when possible
+        // Prefer PSI-level import resolution when possible
         when (language) {
-            Language.JAVA -> imports.addAll(resolveJavaImportsPsi(project, psiFile))
-            Language.KOTLIN -> imports.addAll(resolveKotlinImportsPsi(project, psiFile))
+            Language.JAVA -> imports.addAll(resolveJavaImportsPsi(psiFile))
+            Language.KOTLIN -> imports.addAll(resolveKotlinImportsIfAvailable(project, psiFile))
             else -> {}
         }
         
@@ -388,7 +419,7 @@ object RelatedFileFinder {
         return imports.toList()
     }
 
-    private fun resolveJavaImportsPsi(project: Project, psiFile: PsiFile): List<VirtualFile> {
+    private fun resolveJavaImportsPsi(psiFile: PsiFile): List<VirtualFile> {
         val jf = psiFile as? PsiJavaFile ?: return emptyList()
         return runReadAction {
             jf.importList?.allImportStatements?.mapNotNull { stmt ->
@@ -397,18 +428,27 @@ object RelatedFileFinder {
         }
     }
 
-    private fun resolveKotlinImportsPsi(project: Project, psiFile: PsiFile): List<VirtualFile> {
-        val kf = psiFile as? KtFile ?: return emptyList()
-        val fqns = runReadAction {
-            kf.importDirectives.mapNotNull { it.importPath?.fqName?.asString() }
-        }
-        val scope = GlobalSearchScope.allScope(project)
-        val facade = JavaPsiFacade.getInstance(project)
-        return fqns.mapNotNull { fqn ->
-            // Ignore star imports
-            if (fqn.endsWith(".*")) return@mapNotNull null
-            val psiClass = runReadAction { facade.findClass(fqn, scope) }
-            psiClass?.containingFile?.virtualFile
+    private fun resolveKotlinImportsIfAvailable(project: Project, psiFile: PsiFile): List<VirtualFile> {
+        return try {
+            // Be defensive: consider historical IDs in case of changes across IDE versions.
+            val kotlinPluginIds = listOf("org.jetbrains.kotlin", "com.intellij.kotlin")
+            val isKotlinEnabled = kotlinPluginIds.any { id ->
+                PluginManagerCore.getPlugin(PluginId.getId(id))?.isEnabled == true
+            }
+            if (!isKotlinEnabled) return emptyList()
+
+            // Service is registered only when Kotlin plugin is present (optional dependency)
+            val resolver = try {
+                // Use service() in a try-catch to avoid exceptions when not registered
+                service<KotlinImportResolver>()
+            } catch (_: Throwable) {
+                null
+            }
+            if (resolver != null) resolver.resolveImports(project, psiFile) else emptyList()
+        } catch (t: Throwable) {
+            // Guard against any unexpected issues; fall back silently
+            LOG.debug("Kotlin PSI resolution unavailable, falling back: ", t)
+            emptyList()
         }
     }
     
