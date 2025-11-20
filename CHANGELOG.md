@@ -2,6 +2,25 @@
 
 All notable changes to the Export Source to Clipboard plugin will be documented in this file.
 
+## [2.1.0] - 2025-11-20
+
+### Added
+- `.gitignore` override for explicitly selected files so exports can include chosen files even when ignored, with deterministic ordering and folding flexibility
+- Centralized export notifications through `ExportNotificationPresenter`
+- Expanded unit tests covering export flow edge cases, dependency finders, notifications, and utilities
+
+### Changed
+- Smart-mode and background exports now run deterministically with improved import/dependency accuracy and test-safe fallbacks
+- Settings UI reorganized into sectioned helpers and action presentation refreshed with standardized KotlinDoc
+- Stack trace folding simplified and optimized for faster parsing
+- IntelliJ Platform plugin dependency updated to v2.10.4 alongside refreshed test dependencies
+
+### Removed
+- Export Tool Window and related configuration
+
+### Fixed
+- `.gitignore` parsing correctly handles escaped wildcard patterns on Windows (thanks @akardapolov for PR #1)
+
 ## [2.0.0] - 2025-07-01
 
 ### Added
