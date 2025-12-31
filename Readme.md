@@ -16,6 +16,7 @@
 - [Why Use This Plugin?](#-why-use-this-plugin)
 - [How is this different from CLI tools like `repomix`?](#-how-is-this-different-from-cli-tools-like-repomix)
 - [✨ Key Features](#-key-features)
+- [📣 What's New in Version 2.1.1](#-whats-new-in-version-211)
 - [📣 What's New in Version 2.1](#-whats-new-in-version-21)
 - [📣 What's New in Version 2.0](#-whats-new-in-version-20)
 - [🧑‍💻 How to Get Started](#-how-to-get-started)
@@ -85,6 +86,10 @@ Instantly grab not just the code you see, but the context that surrounds it. Our
 *   **🛠️ IntelliJ Integrated:** Seamlessly fits into your existing IntelliJ workflow with a native look and feel.
 
 ---
+
+### 📣 What's New in Version 2.1.1?
+
+*   **IntelliJ 2025.3 Support:** Extended build compatibility to include IntelliJ IDEA 2025.3.x (build 253.*).
 
 ### 📣 What's New in Version 2.1?
 

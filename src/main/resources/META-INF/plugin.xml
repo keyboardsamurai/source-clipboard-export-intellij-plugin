@@ -33,6 +33,11 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>Version 2.1.1 – Compatibility Update</h3>
+        <ul>
+            <li><b>IntelliJ 2025.3 Support:</b> Extended compatibility to include IntelliJ IDEA 2025.3.x (build 253.*).</li>
+        </ul>
+
         <h3>Version 2.1 – Workflow Polish and Accuracy ⚙️</h3>
         <ul>
             <li><b>Accurate Diff & History:</b> Export history now stores the <i>actual</i> files included after .gitignore, filter, size, and binary checks. The Diff view reflects real added/removed files.</li>
