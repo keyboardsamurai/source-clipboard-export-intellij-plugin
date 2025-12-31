@@ -433,7 +433,8 @@ object RelatedFileFinder {
             // Be defensive: consider historical IDs in case of changes across IDE versions.
             val kotlinPluginIds = listOf("org.jetbrains.kotlin", "com.intellij.kotlin")
             val isKotlinEnabled = kotlinPluginIds.any { id ->
-                PluginManagerCore.getPlugin(PluginId.getId(id))?.isEnabled == true
+                val pluginId = PluginId.getId(id)
+                PluginManagerCore.getPlugin(pluginId) != null && !PluginManagerCore.isDisabled(pluginId)
             }
             if (!isKotlinEnabled) return emptyList()
 
