@@ -117,6 +117,11 @@
         <notificationGroup id="SourceClipboardExport" displayType="BALLOON" />
     </extensions>
 
+    <!-- Declare Kotlin plugin compatibility mode (required since IntelliJ 2024.2.1) -->
+    <extensions defaultExtensionNs="org.jetbrains.kotlin">
+        <supportsKotlinPluginMode supportsK2="true"/>
+    </extensions>
+
     <actions>
         <!-- Primary export action (context menu only) -->
         <action id="SourceClipboardExport.DumpFolderContents"
