@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "com.keyboardsamurais.intellij.plugin"
-version = "2.1.2"
+version = "2.1.3"
 
 val jacocoExtension = extensions.getByType(JacocoPluginExtension::class.java).apply {
     toolVersion = "0.8.12"

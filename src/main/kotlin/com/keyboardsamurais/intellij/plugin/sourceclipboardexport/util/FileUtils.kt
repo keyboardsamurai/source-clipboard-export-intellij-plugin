@@ -122,31 +122,138 @@ object FileUtils {
     }
 
     /**
-     * Performs a lightweight heuristic on the first kilobyte of the file to detect binary content.
+     * Performs a UTF-8 aware heuristic on the first kilobyte of the file to detect binary content.
      * Used as a fallback when the extension is unknown.
+     *
+     * The algorithm:
+     * 1. Skips BOM (Byte Order Mark) if present
+     * 2. Returns true immediately if null bytes are found (strongest binary indicator)
+     * 3. Validates UTF-8 sequences and counts only truly suspicious bytes:
+     *    - Control characters (0x00-0x08, 0x0E-0x1F) excluding tab, LF, CR
+     *    - Orphan UTF-8 continuation bytes (0x80-0xBF without a lead byte)
+     *    - Invalid UTF-8 lead bytes (0xF8-0xFF)
+     *    - Truncated/invalid UTF-8 sequences
+     * 4. Returns true if suspicious bytes exceed 30% of the sample
      */
     fun isLikelyBinaryContent(file: VirtualFile): Boolean {
         if (file.length == 0L) return false
         val sampleSize = min(file.length, 1024).toInt()
         val bytes = try {
-            // Always read only a small prefix of the file to avoid loading large files fully
             file.inputStream.use { it.readNBytes(sampleSize) }
         } catch (e: Exception) {
             LOGGER.warn("Could not read file sample for binary check: ${file.path}", e)
             return true // Treat as binary if unreadable
         }
 
-        // Simple check for null bytes
-        if (bytes.any { it == 0x00.toByte() }) return true
+        // Skip BOM if present
+        val bomLength = detectBomLength(bytes)
+        val startOffset = bomLength
 
-        // Check for high proportion of non-printable ASCII or control characters (excluding tab, LF, CR)
-        val nonTextBytes = bytes.count {
-            val byteVal = it.toInt() and 0xFF
-            (byteVal < 0x20 && byteVal !in listOf(0x09, 0x0A, 0x0D)) || (byteVal > 0x7E)
+        // Null byte check - strongest binary indicator
+        for (i in startOffset until bytes.size) {
+            if (bytes[i] == 0x00.toByte()) return true
         }
-        val threshold = 0.10 // 10% non-text characters
-        val nonTextRatio = if (sampleSize > 0) nonTextBytes.toFloat() / sampleSize else 0f
-        return nonTextRatio > threshold
+
+        // UTF-8 aware suspicious byte counting
+        var suspiciousCount = 0
+        var i = startOffset
+        while (i < bytes.size) {
+            val b = bytes[i].toInt() and 0xFF
+            when {
+                b <= 0x7F -> {
+                    // ASCII range: flag control chars except tab (0x09), LF (0x0A), CR (0x0D)
+                    if (b < 0x20 && b != 0x09 && b != 0x0A && b != 0x0D) {
+                        suspiciousCount++
+                    }
+                    i++
+                }
+                b in 0xC0..0xDF -> {
+                    // 2-byte UTF-8 sequence lead byte
+                    if (isValidUtf8Sequence(bytes, i, 1)) {
+                        i += 2 // Skip valid 2-byte sequence
+                    } else {
+                        suspiciousCount++
+                        i++
+                    }
+                }
+                b in 0xE0..0xEF -> {
+                    // 3-byte UTF-8 sequence lead byte
+                    if (isValidUtf8Sequence(bytes, i, 2)) {
+                        i += 3 // Skip valid 3-byte sequence
+                    } else {
+                        suspiciousCount++
+                        i++
+                    }
+                }
+                b in 0xF0..0xF7 -> {
+                    // 4-byte UTF-8 sequence lead byte
+                    if (isValidUtf8Sequence(bytes, i, 3)) {
+                        i += 4 // Skip valid 4-byte sequence
+                    } else {
+                        suspiciousCount++
+                        i++
+                    }
+                }
+                else -> {
+                    // Orphan continuation byte (0x80-0xBF) or invalid lead byte (0xF8-0xFF)
+                    suspiciousCount++
+                    i++
+                }
+            }
+        }
+
+        val effectiveLength = bytes.size - startOffset
+        if (effectiveLength <= 0) return false
+
+        val suspiciousRatio = suspiciousCount.toFloat() / effectiveLength
+        return suspiciousRatio > 0.30f // 30% threshold for truly suspicious content
+    }
+
+    /**
+     * Detects the length of a BOM (Byte Order Mark) at the start of the byte array.
+     * Supports UTF-8, UTF-16 LE, and UTF-16 BE BOMs.
+     *
+     * @return The number of bytes to skip (0 if no BOM detected)
+     */
+    private fun detectBomLength(bytes: ByteArray): Int {
+        if (bytes.size >= 3 &&
+            bytes[0] == 0xEF.toByte() &&
+            bytes[1] == 0xBB.toByte() &&
+            bytes[2] == 0xBF.toByte()
+        ) {
+            return 3 // UTF-8 BOM
+        }
+        if (bytes.size >= 2) {
+            if (bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte()) {
+                return 2 // UTF-16 LE BOM
+            }
+            if (bytes[0] == 0xFE.toByte() && bytes[1] == 0xFF.toByte()) {
+                return 2 // UTF-16 BE BOM
+            }
+        }
+        return 0
+    }
+
+    /**
+     * Validates that a UTF-8 multi-byte sequence starting at [start] has the expected
+     * number of valid continuation bytes (0x80-0xBF).
+     *
+     * @param bytes The byte array to check
+     * @param start The index of the lead byte
+     * @param expectedContinuation The number of continuation bytes expected (1-3)
+     * @return true if all continuation bytes are valid, false otherwise
+     */
+    private fun isValidUtf8Sequence(bytes: ByteArray, start: Int, expectedContinuation: Int): Boolean {
+        if (start + expectedContinuation >= bytes.size) {
+            return false // Not enough bytes remaining
+        }
+        for (j in 1..expectedContinuation) {
+            val continuationByte = bytes[start + j].toInt() and 0xFF
+            if (continuationByte < 0x80 || continuationByte > 0xBF) {
+                return false // Not a valid continuation byte
+            }
+        }
+        return true
     }
 
     /**

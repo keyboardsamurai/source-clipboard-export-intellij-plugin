@@ -2,6 +2,15 @@
 
 All notable changes to the Export Source to Clipboard plugin will be documented in this file.
 
+## [2.1.3] - 2026-01-09
+
+### Fixed
+- **UTF-8 Binary Detection Bug**: Fixed false positive binary detection for UTF-8 text files containing non-ASCII characters (accented letters, em-dashes, smart quotes, CJK characters, emoji). Files with valid UTF-8 multi-byte sequences are now correctly recognized as text.
+
+### Technical
+- Replaced byte-range binary detection with UTF-8-aware sequence validation
+- Added comprehensive regression tests for UTF-8, BOM, and binary content detection
+
 ## [2.1.0] - 2025-11-20
 
 ### Added
