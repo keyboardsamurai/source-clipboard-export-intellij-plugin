@@ -1,12 +1,12 @@
 plugins {
     id("java")
-    id("org.jetbrains.kotlin.jvm") version "1.9.24"
-    id("org.jetbrains.intellij.platform") version "2.10.4"
+    id("org.jetbrains.kotlin.jvm") version "2.0.21"
+    id("org.jetbrains.intellij.platform") version "2.11.0"
     id("jacoco")
 }
 
 group = "com.keyboardsamurais.intellij.plugin"
-version = "2.1.3"
+version = "2.1.4"
 
 val jacocoExtension = extensions.getByType(JacocoPluginExtension::class.java).apply {
     toolVersion = "0.8.12"
@@ -43,7 +43,7 @@ dependencies {
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
     testImplementation("org.junit.jupiter:junit-jupiter-params:5.10.2") // For parameterized tests
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.10.2")
-    testImplementation("org.jetbrains.kotlin:kotlin-test-junit5:1.9.24")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit5:2.0.21")
     // Mockito 5.3.0+ includes inline mocking by default in mockito-core
     testImplementation("org.mockito:mockito-core:5.17.0")
     testImplementation("org.mockito:mockito-junit-jupiter:5.17.0")
@@ -59,7 +59,7 @@ intellijPlatform {
 
         ideaVersion {
             sinceBuild = "242"
-            untilBuild = "253.*"
+            untilBuild = provider { null }
         }
     }
 
@@ -87,7 +87,9 @@ tasks {
         targetCompatibility = "21"
     }
     withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
-        kotlinOptions.jvmTarget = "21"
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+        }
     }
 
     fun Test.applyCommonTestConfig() {
